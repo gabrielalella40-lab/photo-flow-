@@ -24,12 +24,15 @@ import {
   Crown,
   CreditCard,
   SlidersHorizontal,
+  Coins,
+  Wallet,
 } from "lucide-react";
 
 export default function DashboardPage() {
   const router = useRouter();
 
   const [user, setUser] = useState(null);
+  const [profile, setProfile] = useState(null);
   const [authChecking, setAuthChecking] = useState(true);
   const [jobs, setJobs] = useState([]);
   const [jobsLoading, setJobsLoading] = useState(false);
@@ -48,7 +51,20 @@ export default function DashboardPage() {
         }
 
         setUser(data.user);
+
+        const { data: profileData, error: profileError } = await supabase
+          .from("profiles")
+          .select("credits, plan, email")
+          .eq("id", data.user.id)
+          .single();
+
+        if (profileError) {
+          console.error("ERRO PROFILE:", profileError);
+        } else {
+          setProfile(profileData || null);
+        }
       } catch (error) {
+        console.error("Erro ao validar sessão:", error);
         router.replace("/login");
         return;
       } finally {
@@ -198,6 +214,50 @@ export default function DashboardPage() {
     return "from-cyan-400 via-violet-500 to-fuchsia-500";
   }
 
+  function getPlanLabel(plan) {
+    switch (plan) {
+      case "black":
+        return "Black";
+      case "profissional":
+        return "Profissional";
+      case "pro":
+        return "Pro";
+      case "free":
+      default:
+        return "Free";
+    }
+  }
+
+  function getPlanHeadline(plan) {
+    switch (plan) {
+      case "black":
+        return "Black";
+      case "profissional":
+        return "Plano Profissional";
+      case "pro":
+        return "Plano Pro";
+      case "free":
+      default:
+        return "Plano Free";
+    }
+  }
+
+  function getCreditsMessage(credits) {
+    if (credits <= 0) {
+      return "Seus créditos acabaram. Recarregue para continuar editando sem parar.";
+    }
+
+    if (credits <= 20) {
+      return "Seu saldo está baixo. Vale a pena garantir mais créditos antes do próximo lote.";
+    }
+
+    if (credits <= 100) {
+      return "Você ainda tem saldo disponível para seguir com calma nos próximos envios.";
+    }
+
+    return "Seu saldo está saudável. Dá para seguir com mais tranquilidade nos próximos lotes.";
+  }
+
   const stats = useMemo(() => {
     const totalJobs = jobs.length;
     const processingJobs = jobs.filter((job) => job.status === "processing").length;
@@ -235,6 +295,12 @@ export default function DashboardPage() {
   const hasProcessingJob = jobs.some(
     (job) => job.status === "processing" || job.status === "queued"
   );
+
+  const credits = profile?.credits ?? 0;
+  const planLabel = getPlanLabel(profile?.plan);
+  const planHeadline = getPlanHeadline(profile?.plan);
+  const creditsMessage = getCreditsMessage(credits);
+  const displayEmail = profile?.email || user?.email || "usuária";
 
   if (authChecking) {
     return (
@@ -327,7 +393,7 @@ export default function DashboardPage() {
             <div className="mt-6 rounded-[1.6rem] border border-white/8 bg-[#0d1528] p-5">
               <div className="text-sm text-white/42">Conta conectada</div>
               <div className="mt-2 text-lg font-semibold text-white break-all">
-                {user?.email || "usuária"}
+                {displayEmail}
               </div>
               <div className="mt-4 flex flex-wrap gap-3">
                 <div className="inline-flex items-center gap-2 rounded-full border border-emerald-400/25 bg-emerald-400/10 px-3 py-1.5 text-xs text-emerald-200">
@@ -337,6 +403,10 @@ export default function DashboardPage() {
                 <div className="inline-flex items-center gap-2 rounded-full border border-cyan-400/25 bg-cyan-400/10 px-3 py-1.5 text-xs text-cyan-200">
                   <Sparkles size={14} />
                   Sistema pronto
+                </div>
+                <div className="inline-flex items-center gap-2 rounded-full border border-violet-400/25 bg-violet-400/10 px-3 py-1.5 text-xs text-violet-200">
+                  <Wallet size={14} />
+                  {credits.toLocaleString("pt-BR")} crédito{credits !== 1 ? "s" : ""}
                 </div>
               </div>
             </div>
@@ -372,23 +442,34 @@ export default function DashboardPage() {
               className="rounded-[2rem] border border-white/10 bg-white/[0.05] p-6 backdrop-blur-2xl"
             >
               <div className="text-sm uppercase tracking-[0.26em] text-cyan-200/78">
-                Plano
+                Plano e créditos
               </div>
               <div className="mt-3 text-2xl font-semibold tracking-[-0.04em] text-white">
-                Pro Studio
+                {planHeadline}
               </div>
               <p className="mt-3 leading-7 text-white/58">
-                Gerencie seu plano, veja opções superiores e compre fotos extras quando precisar ampliar sua capacidade.
+                {creditsMessage}
               </p>
 
-              <div className="mt-6 grid gap-3 sm:grid-cols-2">
-                <div className="rounded-2xl border border-white/8 bg-[#0d1528] p-4">
-                  <div className="text-sm text-white/42">Plano atual</div>
-                  <div className="mt-2 inline-flex items-center gap-2 text-lg font-semibold text-white">
-                    <Crown size={18} className="text-cyan-300" />
-                    Pro
+              <div className="mt-6 grid gap-3">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-2xl border border-white/8 bg-[#0d1528] p-4">
+                    <div className="text-sm text-white/42">Plano atual</div>
+                    <div className="mt-2 inline-flex items-center gap-2 text-lg font-semibold text-white">
+                      <Crown size={18} className="text-cyan-300" />
+                      {planLabel}
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-cyan-400/20 bg-cyan-400/10 p-4">
+                    <div className="text-sm text-white/60">Créditos disponíveis</div>
+                    <div className="mt-2 inline-flex items-center gap-2 text-2xl font-bold text-cyan-200">
+                      <Coins size={22} />
+                      {credits.toLocaleString("pt-BR")}
+                    </div>
                   </div>
                 </div>
+
                 <div className="rounded-2xl border border-white/8 bg-[#0d1528] p-4">
                   <div className="text-sm text-white/42">Gerenciar</div>
                   <button
@@ -776,6 +857,13 @@ export default function DashboardPage() {
                     <div className="mt-1 text-xl font-semibold text-white">
                       {recentJob ? getStatusLabel(recentJob.status) : "—"}
                     </div>
+                  </div>
+                </div>
+
+                <div className="mt-3 rounded-2xl bg-[#0b1323] p-4">
+                  <div className="text-sm text-white/40">Seu saldo agora</div>
+                  <div className="mt-1 text-xl font-semibold text-white">
+                    {credits.toLocaleString("pt-BR")} crédito{credits !== 1 ? "s" : ""}
                   </div>
                 </div>
               </div>

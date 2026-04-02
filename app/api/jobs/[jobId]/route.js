@@ -50,7 +50,7 @@ async function getAuthenticatedUser(request) {
   }
 }
 
-export async function GET(request, context) {
+export async function GET(request, { params }) {
   try {
     const supabase = getSupabase();
 
@@ -58,14 +58,12 @@ export async function GET(request, context) {
 
     if (authError || !user) {
       return NextResponse.json(
-        {
-          error: authError || "Não autorizado.",
-        },
+        { error: authError || "Não autorizado." },
         { status: 401 }
       );
     }
 
-    const { jobId } = await context.params;
+    const jobId = params?.jobId;
 
     if (!jobId) {
       return NextResponse.json(

@@ -23,6 +23,11 @@ export async function POST(request) {
       origin ||
       "http://localhost:3000";
 
+      console.log("CHECKOUT BASE URL:", baseUrl);
+console.log("CHECKOUT ORIGIN:", origin);
+console.log("CHECKOUT APP URL ENV:", process.env.NEXT_PUBLIC_APP_URL);
+console.log("CHECKOUT PLAN:", plan);
+
     let priceId;
     let mode;
     let credits = 0;

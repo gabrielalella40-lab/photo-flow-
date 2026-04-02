@@ -1,9 +1,16 @@
 import Stripe from "stripe";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+export async function GET() {
+  return Response.json({
+    ok: true,
+    route: "/api/checkout",
+  });
+}
 
 export async function POST(request) {
   try {
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+
     const { plan, userId, userEmail } = await request.json();
 
     const origin = request.headers.get("origin");
@@ -46,13 +53,6 @@ export async function POST(request) {
         );
     }
 
-    if (!process.env.STRIPE_SECRET_KEY) {
-      return Response.json(
-        { error: "STRIPE_SECRET_KEY não configurada." },
-        { status: 500 }
-      );
-    }
-
     if (!priceId) {
       return Response.json(
         { error: `Price ID não encontrado para o plano: ${plan}` },
@@ -60,7 +60,6 @@ export async function POST(request) {
       );
     }
 
-    // Para compra de créditos, userId é obrigatório
     if (mode === "payment" && !userId) {
       return Response.json(
         { error: "userId é obrigatório para compra de créditos." },

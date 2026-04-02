@@ -1,13 +1,25 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+function getSupabase() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl) {
+    throw new Error("NEXT_PUBLIC_SUPABASE_URL não configurada.");
+  }
+
+  if (!supabaseServiceRoleKey) {
+    throw new Error("SUPABASE_SERVICE_ROLE_KEY não configurada.");
+  }
+
+  return createClient(supabaseUrl, supabaseServiceRoleKey);
+}
 
 async function getAuthenticatedUser(request) {
   try {
+    const supabase = getSupabase();
+
     const authHeader = request.headers.get("authorization");
 
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
@@ -40,6 +52,8 @@ async function getAuthenticatedUser(request) {
 
 export async function GET(request) {
   try {
+    const supabase = getSupabase();
+
     const { user, error: authError } = await getAuthenticatedUser(request);
 
     if (authError || !user) {

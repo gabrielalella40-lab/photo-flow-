@@ -52,17 +52,26 @@ export default function DashboardPage() {
 
         setUser(data.user);
 
-        const { data: profileData, error: profileError } = await supabase
-          .from("profiles")
-          .select("credits, plan, email")
-          .eq("id", data.user.id)
-          .single();
+const { data: profileData, error: profileError } = await supabase
+  .from("profiles")
+  .select("credits, plan, email")
+  .eq("id", data.user.id)
+  .single();
 
-        if (profileError) {
-          console.error("ERRO PROFILE:", profileError);
-        } else {
-          setProfile(profileData || null);
-        }
+if (profileError) {
+  console.error("ERRO PROFILE:", profileError);
+  setProfile({
+    credits: 0,
+    plan: "free",
+    email: data.user.email || "",
+  });
+} else {
+  setProfile({
+    credits: profileData?.credits ?? 0,
+    plan: profileData?.plan || "free",
+    email: profileData?.email || data.user.email || "",
+  });
+}
       } catch (error) {
         console.error("Erro ao validar sessão:", error);
         router.replace("/login");

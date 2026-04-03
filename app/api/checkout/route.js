@@ -90,7 +90,7 @@ console.log("CHECKOUT PLAN:", plan);
         user_id: String(userId || ""),
       },
       customer_email: userEmail || undefined,
-     success_url: `${baseUrl}/dashboard?success=true&plan=${plan}`,
+success_url: `${baseUrl}/success?success=true&plan=${plan}`,
 cancel_url: `${baseUrl}/pricing?checkout=cancelled&plan=${plan}`,
       allow_promotion_codes: true,
     });

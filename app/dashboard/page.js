@@ -1,9 +1,9 @@
 "use client";
 
 import { supabase } from "../../lib/supabase/client";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import {
   Search,
@@ -26,113 +26,326 @@ import {
   SlidersHorizontal,
   Coins,
   Wallet,
+  CheckCircle,
+  LoaderCircle,
 } from "lucide-react";
 
 export default function DashboardPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [authChecking, setAuthChecking] = useState(true);
+
   const [jobs, setJobs] = useState([]);
   const [jobsLoading, setJobsLoading] = useState(false);
   const [jobsError, setJobsError] = useState("");
+
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
 
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [manualRefreshing, setManualRefreshing] = useState(false);
+
+  const [paymentSyncing, setPaymentSyncing] = useState(false);
+  const [paymentSyncDone, setPaymentSyncDone] = useState(false);
+  const [paymentSyncMessage, setPaymentSyncMessage] = useState("");
+
+  const normalizePlan = useCallback((plan) => {
+    if (!plan) return "free";
+
+    const safePlan = String(plan).toLowerCase().trim();
+
+    if (safePlan === "black") return "black";
+    if (safePlan === "pro" || safePlan === "profissional") return "pro";
+
+    return "free";
+  }, []);
+
+  const normalizeProfile = useCallback(
+    (profileData, fallbackEmail = "") => {
+      return {
+        credits: Number(profileData?.credits ?? 0),
+        plan: normalizePlan(profileData?.plan),
+        email: profileData?.email || fallbackEmail || "",
+      };
+    },
+    [normalizePlan]
+  );
+
+  const fetchProfile = useCallback(
+    async (userId, fallbackEmail = "") => {
+      setProfileLoading(true);
+
+      try {
+        const { data: profileData, error: profileError } = await supabase
+          .from("profiles")
+          .select("credits, plan, email")
+          .eq("id", userId)
+          .single();
+
+        console.log("PROFILE DATA:", profileData);
+        console.log("PROFILE ERROR:", profileError);
+
+        if (profileError) {
+          console.error("ERRO PROFILE:", profileError);
+
+          const fallback = normalizeProfile(
+            {
+              credits: 0,
+              plan: "free",
+              email: fallbackEmail,
+            },
+            fallbackEmail
+          );
+
+          setProfile(fallback);
+          return fallback;
+        }
+
+        const normalized = normalizeProfile(profileData, fallbackEmail);
+        setProfile(normalized);
+        return normalized;
+      } catch (error) {
+        console.error("Erro ao carregar profile:", error);
+
+        const fallback = normalizeProfile(
+          {
+            credits: 0,
+            plan: "free",
+            email: fallbackEmail,
+          },
+          fallbackEmail
+        );
+
+        setProfile(fallback);
+        return fallback;
+      } finally {
+        setProfileLoading(false);
+      }
+    },
+    [normalizeProfile]
+  );
+
+  const loadJobs = useCallback(async () => {
+    try {
+      setJobsLoading(true);
+      setJobsError("");
+
+      const res = await fetch("/api/jobs", {
+        method: "GET",
+        cache: "no-store",
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(
+          data?.details || data?.error || "Erro ao buscar projetos."
+        );
+      }
+
+      setJobs(Array.isArray(data.jobs) ? data.jobs : []);
+      return Array.isArray(data.jobs) ? data.jobs : [];
+    } catch (error) {
+      setJobsError(
+        error?.message || "Erro inesperado ao carregar os projetos."
+      );
+      return [];
+    } finally {
+      setJobsLoading(false);
+    }
+  }, []);
+
+  const refreshDashboardData = useCallback(
+    async ({ silent = false } = {}) => {
+      if (!user?.id) return;
+
+      if (!silent) {
+        setManualRefreshing(true);
+      }
+
+      try {
+        await Promise.all([
+          fetchProfile(user.id, user.email || ""),
+          loadJobs(),
+        ]);
+      } finally {
+        if (!silent) {
+          setManualRefreshing(false);
+        }
+      }
+    },
+    [user, fetchProfile, loadJobs]
+  );
+
   useEffect(() => {
+    let cancelled = false;
+
     async function checkUser() {
       try {
         const { data, error } = await supabase.auth.getUser();
-        console.log("USER LOGADO:", data.user);
-console.log("AUTH ERROR:", error);
 
-        if (error || !data.user) {
+        console.log("USER LOGADO:", data?.user);
+        console.log("AUTH ERROR:", error);
+
+        if (error || !data?.user) {
           router.replace("/login");
           return;
         }
 
+        if (cancelled) return;
+
         setUser(data.user);
 
-const { data: profileData, error: profileError } = await supabase
- .from("profiles")
- .select("credits, plan, email")
- .eq("id", data.user.id)
- .single();
-
-console.log("USER LOGADO:", data.user);
-console.log("PROFILE DATA:", profileData);
-console.log("PROFILE ERROR:", profileError);
-
-if (profileError) {
-  console.error("ERRO PROFILE:", profileError);
-  setProfile({
-    credits: 0,
-    plan: "free",
-    email: data.user.email || "",
-  });
-} else {
-  setProfile({
-    credits: profileData?.credits ?? 0,
-    plan: profileData?.plan || "free",
-    email: profileData?.email || data.user.email || "",
-  });
-}
+        await fetchProfile(data.user.id, data.user.email || "");
       } catch (error) {
         console.error("Erro ao validar sessão:", error);
         router.replace("/login");
         return;
       } finally {
-        setAuthChecking(false);
+        if (!cancelled) {
+          setAuthChecking(false);
+        }
       }
     }
 
     checkUser();
-  }, [router]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [router, fetchProfile]);
 
   useEffect(() => {
     if (authChecking || !user) return;
 
     let isMounted = true;
 
-    async function loadJobs() {
-      try {
-        setJobsLoading(true);
-        setJobsError("");
-
-        const res = await fetch("/api/jobs", {
-          method: "GET",
-          cache: "no-store",
-        });
-
-        const data = await res.json();
-
-        if (!res.ok) {
-          throw new Error(
-            data?.details || data?.error || "Erro ao buscar projetos."
-          );
-        }
-
-        if (!isMounted) return;
-        setJobs(Array.isArray(data.jobs) ? data.jobs : []);
-      } catch (error) {
-        if (!isMounted) return;
-        setJobsError(
-          error?.message || "Erro inesperado ao carregar os projetos."
-        );
-      } finally {
-        if (isMounted) {
-          setJobsLoading(false);
-        }
-      }
+    async function run() {
+      const result = await loadJobs();
+      if (!isMounted) return;
+      return result;
     }
 
-    loadJobs();
+    run();
 
     return () => {
       isMounted = false;
     };
-  }, [authChecking, user]);
+  }, [authChecking, user, loadJobs]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const success = searchParams.get("success");
+    const planFromUrl = normalizePlan(searchParams.get("plan"));
+    const sessionFromUrl = searchParams.get("session_id");
+
+    if (success !== "true") return;
+
+    let cancelled = false;
+    let intervalId;
+
+    async function syncAfterCheckout() {
+      setPaymentSyncing(true);
+      setPaymentSyncDone(false);
+      setPaymentSyncMessage("Confirmando seu pagamento e sincronizando plano e créditos...");
+
+      const initialCredits = Number(profile?.credits ?? 0);
+      const initialPlan = normalizePlan(profile?.plan);
+
+      let attempts = 0;
+      const maxAttempts = 8;
+
+      async function trySync() {
+        attempts += 1;
+
+        if (cancelled) return;
+
+        const freshProfile = await fetchProfile(user.id, user.email || "");
+        await loadJobs();
+
+        if (cancelled || !freshProfile) return;
+
+        const freshPlan = normalizePlan(freshProfile.plan);
+        const freshCredits = Number(freshProfile.credits ?? 0);
+
+        const planChanged = freshPlan !== initialPlan;
+        const creditsChanged = freshCredits !== initialCredits;
+
+        const paidPlanArrived =
+          planFromUrl === "black"
+            ? freshPlan === "black"
+            : planFromUrl === "pro"
+            ? freshPlan === "pro" || freshPlan === "black"
+            : false;
+
+        const creditsArrived = creditsChanged && freshCredits >= initialCredits;
+
+        const syncCompleted =
+          paidPlanArrived || planChanged || creditsArrived;
+
+        if (syncCompleted) {
+          setPaymentSyncing(false);
+          setPaymentSyncDone(true);
+
+          if (paidPlanArrived) {
+            setPaymentSyncMessage(
+              `Pagamento confirmado. Seu plano já foi atualizado para ${freshPlan === "black" ? "Black" : "Pro"}.`
+            );
+          } else if (creditsArrived) {
+            setPaymentSyncMessage(
+              `Pagamento confirmado. Seus créditos foram atualizados para ${freshCredits.toLocaleString("pt-BR")}.`
+            );
+          } else {
+            setPaymentSyncMessage("Pagamento confirmado. Sua dashboard foi atualizada.");
+          }
+
+          const cleanUrl = "/dashboard";
+          window.history.replaceState({}, "", cleanUrl);
+
+          return;
+        }
+
+        if (attempts >= maxAttempts) {
+          setPaymentSyncing(false);
+          setPaymentSyncDone(true);
+          setPaymentSyncMessage(
+            "Seu pagamento foi processado. A dashboard já buscou os dados novamente. Se ainda faltar atualizar algo, clique em Atualizar agora."
+          );
+
+          const cleanUrl = "/dashboard";
+          window.history.replaceState({}, "", cleanUrl);
+          return;
+        }
+
+        setPaymentSyncMessage(
+          `Sincronizando pagamento${sessionFromUrl ? " do checkout" : ""}... tentativa ${attempts} de ${maxAttempts}.`
+        );
+
+        intervalId = setTimeout(trySync, 2200);
+      }
+
+      trySync();
+    }
+
+    syncAfterCheckout();
+
+    return () => {
+      cancelled = true;
+      if (intervalId) clearTimeout(intervalId);
+    };
+  }, [
+    user,
+    searchParams,
+    profile?.credits,
+    profile?.plan,
+    fetchProfile,
+    loadJobs,
+    normalizePlan,
+  ]);
 
   async function handleLogout() {
     try {
@@ -230,11 +443,9 @@ if (profileError) {
   }
 
   function getPlanLabel(plan) {
-    switch (plan) {
+    switch (normalizePlan(plan)) {
       case "black":
         return "Black";
-      case "profissional":
-        return "Profissional";
       case "pro":
         return "Pro";
       case "free":
@@ -244,11 +455,9 @@ if (profileError) {
   }
 
   function getPlanHeadline(plan) {
-    switch (plan) {
+    switch (normalizePlan(plan)) {
       case "black":
-        return "Black";
-      case "profissional":
-        return "Plano Profissional";
+        return "Plano Black";
       case "pro":
         return "Plano Pro";
       case "free":
@@ -311,7 +520,7 @@ if (profileError) {
     (job) => job.status === "processing" || job.status === "queued"
   );
 
-  const credits = profile?.credits ?? 0;
+  const credits = Number(profile?.credits ?? 0);
   const planLabel = getPlanLabel(profile?.plan);
   const planHeadline = getPlanHeadline(profile?.plan);
   const creditsMessage = getCreditsMessage(credits);
@@ -361,6 +570,22 @@ if (profileError) {
 
           <div className="flex flex-wrap gap-3">
             <button
+              onClick={() => refreshDashboardData()}
+              disabled={manualRefreshing || paymentSyncing}
+              className={`inline-flex items-center gap-2 rounded-full border px-5 py-2.5 text-sm font-medium transition duration-200 ${
+                manualRefreshing || paymentSyncing
+                  ? "cursor-not-allowed border-white/10 bg-white/[0.03] text-white/45"
+                  : "border-white/10 bg-white/[0.04] text-white/82 hover:border-white/20 hover:bg-white/[0.08] hover:text-white"
+              }`}
+            >
+              <RefreshCw
+                size={16}
+                className={manualRefreshing || paymentSyncing ? "animate-spin" : ""}
+              />
+              {manualRefreshing || paymentSyncing ? "Atualizando..." : "Atualizar"}
+            </button>
+
+            <button
               onClick={goToUpload}
               className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-5 py-2.5 text-sm font-medium text-white/82 transition duration-200 hover:border-white/20 hover:bg-white/[0.08] hover:text-white"
             >
@@ -384,6 +609,57 @@ if (profileError) {
       </header>
 
       <main className="relative z-10 mx-auto max-w-7xl px-6 py-8 lg:px-8">
+        {(paymentSyncing || paymentSyncDone) && (
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            className={`mb-6 rounded-[1.7rem] border p-4 backdrop-blur-2xl ${
+              paymentSyncing
+                ? "border-cyan-400/25 bg-cyan-400/10 text-cyan-100"
+                : "border-emerald-400/25 bg-emerald-400/10 text-emerald-100"
+            }`}
+          >
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div className="flex items-start gap-3">
+                <div
+                  className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl ${
+                    paymentSyncing
+                      ? "bg-cyan-400/15 text-cyan-200"
+                      : "bg-emerald-400/15 text-emerald-200"
+                  }`}
+                >
+                  {paymentSyncing ? (
+                    <LoaderCircle size={18} className="animate-spin" />
+                  ) : (
+                    <CheckCircle size={18} />
+                  )}
+                </div>
+
+                <div>
+                  <div className="text-sm font-semibold tracking-[0.18em] uppercase">
+                    {paymentSyncing ? "Sincronizando pagamento" : "Dashboard atualizada"}
+                  </div>
+                  <div className="mt-1 text-sm text-white/80">
+                    {paymentSyncMessage}
+                  </div>
+                </div>
+              </div>
+
+              {!paymentSyncing && (
+                <button
+                  onClick={() => {
+                    setPaymentSyncDone(false);
+                    setPaymentSyncMessage("");
+                  }}
+                  className="inline-flex items-center justify-center rounded-xl border border-white/10 bg-white/[0.05] px-4 py-2 text-sm font-medium text-white/85 transition hover:bg-white/[0.08]"
+                >
+                  Fechar
+                </button>
+              )}
+            </div>
+          </motion.div>
+        )}
+
         <section className="mb-8 grid gap-6 xl:grid-cols-[1.18fr_0.82fr]">
           <motion.div
             initial={{ opacity: 0, y: 18 }}
@@ -406,10 +682,29 @@ if (profileError) {
             </p>
 
             <div className="mt-6 rounded-[1.6rem] border border-white/8 bg-[#0d1528] p-5">
-              <div className="text-sm text-white/42">Conta conectada</div>
-              <div className="mt-2 text-lg font-semibold text-white break-all">
-                {displayEmail}
+              <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+                <div>
+                  <div className="text-sm text-white/42">Conta conectada</div>
+                  <div className="mt-2 text-lg font-semibold text-white break-all">
+                    {displayEmail}
+                  </div>
+                </div>
+
+                <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-white/70">
+                  {profileLoading ? (
+                    <>
+                      <LoaderCircle size={14} className="animate-spin" />
+                      Atualizando dados
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 size={14} />
+                      Dados sincronizados
+                    </>
+                  )}
+                </div>
               </div>
+
               <div className="mt-4 flex flex-wrap gap-3">
                 <div className="inline-flex items-center gap-2 rounded-full border border-emerald-400/25 bg-emerald-400/10 px-3 py-1.5 text-xs text-emerald-200">
                   <ShieldCheck size={14} />
@@ -456,12 +751,21 @@ if (profileError) {
               transition={{ duration: 0.35, delay: 0.05 }}
               className="rounded-[2rem] border border-white/10 bg-white/[0.05] p-6 backdrop-blur-2xl"
             >
-              <div className="text-sm uppercase tracking-[0.26em] text-cyan-200/78">
-                Plano e créditos
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <div className="text-sm uppercase tracking-[0.26em] text-cyan-200/78">
+                    Plano e créditos
+                  </div>
+                  <div className="mt-3 text-2xl font-semibold tracking-[-0.04em] text-white">
+                    {planHeadline}
+                  </div>
+                </div>
+
+                <div className="rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1.5 text-xs font-medium text-cyan-200">
+                  {profileLoading ? "Sincronizando" : "Em tempo real"}
+                </div>
               </div>
-              <div className="mt-3 text-2xl font-semibold tracking-[-0.04em] text-white">
-                {planHeadline}
-              </div>
+
               <p className="mt-3 leading-7 text-white/58">
                 {creditsMessage}
               </p>
@@ -476,7 +780,7 @@ if (profileError) {
                     </div>
                   </div>
 
-                  <div className="rounded-2xl border border-cyan-400/20 bg-cyan-400/10 p-4">
+                  <div className="rounded-2xl border border-cyan-400/20 bg-cyan-400/10 p-4 shadow-[0_0_30px_rgba(34,211,238,0.08)]">
                     <div className="text-sm text-white/60">Créditos disponíveis</div>
                     <div className="mt-2 inline-flex items-center gap-2 text-2xl font-bold text-cyan-200">
                       <Coins size={22} />
@@ -486,14 +790,34 @@ if (profileError) {
                 </div>
 
                 <div className="rounded-2xl border border-white/8 bg-[#0d1528] p-4">
-                  <div className="text-sm text-white/42">Gerenciar</div>
-                  <button
-                    onClick={goToPricing}
-                    className="mt-2 inline-flex items-center gap-2 text-sm font-semibold text-cyan-200 transition hover:text-white"
-                  >
-                    <CreditCard size={16} />
-                    Ver planos e extras
-                  </button>
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <div className="text-sm text-white/42">Gerenciar</div>
+                      <button
+                        onClick={goToPricing}
+                        className="mt-2 inline-flex items-center gap-2 text-sm font-semibold text-cyan-200 transition hover:text-white"
+                      >
+                        <CreditCard size={16} />
+                        Ver planos e extras
+                      </button>
+                    </div>
+
+                    <button
+                      onClick={() => refreshDashboardData()}
+                      disabled={manualRefreshing || paymentSyncing}
+                      className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition ${
+                        manualRefreshing || paymentSyncing
+                          ? "cursor-not-allowed border border-white/10 bg-white/[0.03] text-white/40"
+                          : "border border-white/10 bg-white/[0.04] text-white/80 hover:border-white/20 hover:bg-white/[0.08] hover:text-white"
+                      }`}
+                    >
+                      <RefreshCw
+                        size={15}
+                        className={manualRefreshing || paymentSyncing ? "animate-spin" : ""}
+                      />
+                      Atualizar agora
+                    </button>
+                  </div>
                 </div>
               </div>
             </motion.div>

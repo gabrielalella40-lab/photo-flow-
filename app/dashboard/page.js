@@ -55,12 +55,14 @@ console.log("AUTH ERROR:", error);
         setUser(data.user);
 
 const { data: profileData, error: profileError } = await supabase
-  .from("profiles")
-  console.log("PROFILE DATA:", profileData);
+ .from("profiles")
+ .select("credits, plan, email")
+ .eq("id", data.user.id)
+ .single();
+
+console.log("USER LOGADO:", data.user);
+console.log("PROFILE DATA:", profileData);
 console.log("PROFILE ERROR:", profileError);
-  .select("credits, plan, email")
-  .eq("id", data.user.id)
-  .single();
 
 if (profileError) {
   console.error("ERRO PROFILE:", profileError);

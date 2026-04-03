@@ -119,33 +119,36 @@ export default function PricingPage() {
       setError("");
       setLoadingPlan(planId);
 
-      const {
-        data: { user },
-        error: authError,
-      } = await supabase.auth.getUser();
+    const {
+  data: { session },
+  error: authError,
+} = await supabase.auth.getSession();
 
-      if (authError) {
-        setError("Não foi possível validar seu login agora.");
-        return;
-      }
+const user = session?.user;
 
-      if (!user) {
-        window.location.href = "/login";
-        return;
-      }
+console.log("USUARIO DO CHECKOUT:", user);
 
-      const response = await fetch("/api/checkout", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          plan: planId,
-          userId: user.id,
-          userEmail: user.email,
-        }),
-      });
+if (authError) {
+  setError("Não foi possível validar seu login agora.");
+  return;
+}
 
+if (!user?.id) {
+  window.location.href = "/login";
+  return;
+}
+
+const response = await fetch("/api/checkout", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    plan: planId,
+    userId: user.id,
+    userEmail: user.email,
+  }),
+});
       const data = await response.json();
 
       if (!response.ok) {

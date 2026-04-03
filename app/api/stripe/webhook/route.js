@@ -6,17 +6,39 @@ export const dynamic = "force-dynamic";
 
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+
 const supabaseUrl =
   process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+if (!stripeSecretKey) {
+  throw new Error("STRIPE_SECRET_KEY não configurada.");
+}
+
+if (!webhookSecret) {
+  throw new Error("STRIPE_WEBHOOK_SECRET não configurada.");
+}
+
+if (!supabaseUrl) {
+  throw new Error("SUPABASE_URL ou NEXT_PUBLIC_SUPABASE_URL não configurada.");
+}
+
+if (!supabaseServiceRoleKey) {
+  throw new Error("SUPABASE_SERVICE_ROLE_KEY não configurada.");
+}
 
 const stripe = new Stripe(stripeSecretKey);
 
 const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey);
 
+/**
+ * Garante que o perfil exista.
+ */
 async function ensureProfile(userId, email = null) {
   const payload = {
     id: userId,
+    updated_at: new Date().toISOString(),
   };
 
   if (email) {
@@ -30,23 +52,31 @@ async function ensureProfile(userId, email = null) {
   }
 }
 
-async function updateUserPlan({ userId, plan, subscriptionId = null, customerId = null }) {
-  const updatePayload = {
+/**
+ * Atualiza plano e IDs Stripe do usuário.
+ */
+async function updateUserPlan({
+  userId,
+  plan,
+  subscriptionId = null,
+  customerId = null,
+}) {
+  const payload = {
     plan,
     updated_at: new Date().toISOString(),
   };
 
-  if (subscriptionId) {
-    updatePayload.stripe_subscription_id = subscriptionId;
+  if (subscriptionId !== null) {
+    payload.stripe_subscription_id = subscriptionId;
   }
 
-  if (customerId) {
-    updatePayload.stripe_customer_id = customerId;
+  if (customerId !== null) {
+    payload.stripe_customer_id = customerId;
   }
 
   const { error } = await supabaseAdmin
     .from("profiles")
-    .update(updatePayload)
+    .update(payload)
     .eq("id", userId);
 
   if (error) {
@@ -54,6 +84,50 @@ async function updateUserPlan({ userId, plan, subscriptionId = null, customerId 
   }
 }
 
+/**
+ * Busca profile pelo stripe_customer_id.
+ */
+async function getProfileByCustomerId(customerId) {
+  if (!customerId) return null;
+
+  const { data, error } = await supabaseAdmin
+    .from("profiles")
+    .select("id, email, plan, stripe_customer_id, stripe_subscription_id")
+    .eq("stripe_customer_id", customerId)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Erro ao buscar profile por customerId: ${error.message}`);
+  }
+
+  return data || null;
+}
+
+/**
+ * Busca profile pelo stripe_subscription_id.
+ */
+async function getProfileBySubscriptionId(subscriptionId) {
+  if (!subscriptionId) return null;
+
+  const { data, error } = await supabaseAdmin
+    .from("profiles")
+    .select("id, email, plan, stripe_customer_id, stripe_subscription_id")
+    .eq("stripe_subscription_id", subscriptionId)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(
+      `Erro ao buscar profile por subscriptionId: ${error.message}`
+    );
+  }
+
+  return data || null;
+}
+
+/**
+ * Compra avulsa de créditos.
+ * Requer a função RPC já existente no seu banco.
+ */
 async function addCredits({
   userId,
   credits,
@@ -76,22 +150,56 @@ async function addCredits({
   }
 }
 
+/**
+ * Descobre qual plano foi comprado.
+ * Primeiro tenta metadata.plan.
+ * Se não houver, tenta pelo price id.
+ */
+function getPlanFromSession(session) {
+  const metadataPlan = session?.metadata?.plan;
+
+  if (metadataPlan === "pro" || metadataPlan === "black") {
+    return metadataPlan;
+  }
+
+  const lineItemPriceId =
+    session?.line_items?.data?.[0]?.price?.id ||
+    session?.display_items?.[0]?.price?.id ||
+    null;
+
+  if (
+    lineItemPriceId &&
+    lineItemPriceId === process.env.NEXT_PUBLIC_STRIPE_PRO_PRICE_ID
+  ) {
+    return "pro";
+  }
+
+  if (
+    lineItemPriceId &&
+    lineItemPriceId === process.env.NEXT_PUBLIC_STRIPE_BLACK_PRICE_ID
+  ) {
+    return "black";
+  }
+
+  return null;
+}
+
+/**
+ * Mapeia status da assinatura para o plano do usuário.
+ */
+function resolvePlanFromSubscription(subscription, currentPlan = "free") {
+  const status = subscription?.status;
+
+  // active e trialing devem manter acesso ao plano pago
+  if (status === "active" || status === "trialing") {
+    return currentPlan === "black" ? "black" : currentPlan === "pro" ? "pro" : "free";
+  }
+
+  // incomplete, incomplete_expired, past_due, unpaid, canceled
+  return "free";
+}
+
 export async function POST(request) {
-  if (!stripeSecretKey) {
-    console.error("STRIPE_SECRET_KEY não configurada.");
-    return new Response("STRIPE_SECRET_KEY não configurada", { status: 500 });
-  }
-
-  if (!webhookSecret) {
-    console.error("STRIPE_WEBHOOK_SECRET não configurada.");
-    return new Response("STRIPE_WEBHOOK_SECRET não configurada", { status: 500 });
-  }
-
-  if (!supabaseUrl || !supabaseServiceRoleKey) {
-    console.error("Variáveis do Supabase admin não configuradas.");
-    return new Response("Supabase admin não configurado", { status: 500 });
-  }
-
   const signature = request.headers.get("stripe-signature");
 
   if (!signature) {
@@ -111,13 +219,26 @@ export async function POST(request) {
 
   try {
     switch (event.type) {
+      /**
+       * CHECKOUT CONCLUÍDO
+       * Aqui vinculamos o usuário ao customer/subscription
+       * e já liberamos o plano imediatamente.
+       */
       case "checkout.session.completed":
       case "checkout.session.async_payment_succeeded": {
-        const session = event.data.object;
+        let session = event.data.object;
 
-        const plan = session?.metadata?.plan || null;
+        // Expand para pegar line_items se precisar
+        if (session?.id) {
+          session = await stripe.checkout.sessions.retrieve(session.id, {
+            expand: ["line_items", "subscription"],
+          });
+        }
+
+        const plan = getPlanFromSession(session);
         const credits = Number(session?.metadata?.credits || 0);
         const userId = session?.metadata?.user_id || null;
+
         const customerEmail =
           session?.customer_details?.email ||
           session?.customer_email ||
@@ -141,30 +262,28 @@ export async function POST(request) {
         console.log("CHECKOUT CONCLUÍDO:", {
           eventId: event.id,
           sessionId: session.id,
-          customerId,
-          customerEmail,
           mode: session.mode,
           paymentStatus: session.payment_status,
           plan,
           credits,
           userId,
+          customerId,
           subscriptionId,
           paymentIntentId,
+          customerEmail,
         });
 
         if (!userId) {
           console.error("user_id ausente no metadata.", {
             eventId: event.id,
             sessionId: session.id,
-            plan,
-            credits,
           });
           return new Response("user_id ausente no metadata", { status: 400 });
         }
 
         await ensureProfile(userId, customerEmail);
 
-        // COMPRA AVULSA DE CRÉDITOS
+        // COMPRA DE CRÉDITOS
         if (session.mode === "payment" && credits > 0) {
           await addCredits({
             userId,
@@ -175,19 +294,15 @@ export async function POST(request) {
             stripePaymentIntentId: paymentIntentId,
           });
 
-          console.log("CRÉDITOS ADICIONADOS COM SUCESSO:", {
+          console.log("CRÉDITOS ADICIONADOS:", {
             userId,
             credits,
             sessionId: session.id,
-            eventId: event.id,
           });
         }
 
-        // ASSINATURA / PLANO
-if (
-  session.mode === "subscription" &&
-  (plan === "pro" || plan === "black")
-) {
+        // ASSINATURA DE PLANO
+        if (session.mode === "subscription" && (plan === "pro" || plan === "black")) {
           await updateUserPlan({
             userId,
             plan,
@@ -195,7 +310,7 @@ if (
             customerId,
           });
 
-          console.log("PLANO ATUALIZADO COM SUCESSO:", {
+          console.log("PLANO LIBERADO NO CHECKOUT:", {
             userId,
             plan,
             subscriptionId,
@@ -206,39 +321,101 @@ if (
         break;
       }
 
-      case "customer.subscription.updated": {
+      /**
+       * ASSINATURA ATUALIZADA
+       * Aqui mantemos a dashboard sincronizada conforme o status real da assinatura.
+       */
+      case "customer.subscription.updated":
+      case "customer.subscription.created": {
         const subscription = event.data.object;
+
+        const subscriptionId = subscription.id;
 
         const customerId =
           typeof subscription.customer === "string"
             ? subscription.customer
             : subscription.customer?.id || null;
 
-        console.log("ASSINATURA ATUALIZADA:", {
-          subscriptionId: subscription.id,
-          status: subscription.status,
+        const status = subscription.status;
+
+        let profile =
+          (await getProfileBySubscriptionId(subscriptionId)) ||
+          (await getProfileByCustomerId(customerId));
+
+        if (!profile) {
+          console.warn("Nenhum profile encontrado para subscription/customer.", {
+            subscriptionId,
+            customerId,
+            status,
+          });
+          break;
+        }
+
+        const currentPlan =
+          profile.plan === "black" || profile.plan === "pro"
+            ? profile.plan
+            : "free";
+
+        const newPlan = resolvePlanFromSubscription(subscription, currentPlan);
+
+        await updateUserPlan({
+          userId: profile.id,
+          plan: newPlan,
+          subscriptionId,
+          customerId,
+        });
+
+        console.log("ASSINATURA SINCRONIZADA:", {
+          userId: profile.id,
+          oldPlan: profile.plan,
+          newPlan,
+          status,
+          subscriptionId,
           customerId,
         });
 
         break;
       }
 
+      /**
+       * ASSINATURA CANCELADA/EXCLUÍDA
+       * Aqui derrubamos o plano para free.
+       */
       case "customer.subscription.deleted": {
         const subscription = event.data.object;
+
+        const subscriptionId = subscription.id;
 
         const customerId =
           typeof subscription.customer === "string"
             ? subscription.customer
             : subscription.customer?.id || null;
 
-        console.log("ASSINATURA CANCELADA:", {
-          subscriptionId: subscription.id,
-          status: subscription.status,
+        let profile =
+          (await getProfileBySubscriptionId(subscriptionId)) ||
+          (await getProfileByCustomerId(customerId));
+
+        if (!profile) {
+          console.warn("Profile não encontrado para assinatura cancelada.", {
+            subscriptionId,
+            customerId,
+          });
+          break;
+        }
+
+        await updateUserPlan({
+          userId: profile.id,
+          plan: "free",
+          subscriptionId: null,
           customerId,
         });
 
-        // Se quiser, futuramente podemos localizar o profile pelo stripe_customer_id
-        // e voltar o plano para "free". Por enquanto só estamos registrando.
+        console.log("PLANO REBAIXADO PARA FREE:", {
+          userId: profile.id,
+          subscriptionId,
+          customerId,
+        });
+
         break;
       }
 

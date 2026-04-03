@@ -44,6 +44,8 @@ export default function DashboardPage() {
     async function checkUser() {
       try {
         const { data, error } = await supabase.auth.getUser();
+        console.log("USER LOGADO:", data.user);
+console.log("AUTH ERROR:", error);
 
         if (error || !data.user) {
           router.replace("/login");
@@ -54,6 +56,8 @@ export default function DashboardPage() {
 
 const { data: profileData, error: profileError } = await supabase
   .from("profiles")
+  console.log("PROFILE DATA:", profileData);
+console.log("PROFILE ERROR:", profileError);
   .select("credits, plan, email")
   .eq("id", data.user.id)
   .single();

@@ -184,10 +184,10 @@ export async function POST(request) {
         }
 
         // ASSINATURA / PLANO
-        if (
-          session.mode === "subscription" &&
-          (plan === "profissional" || plan === "black")
-        ) {
+if (
+  session.mode === "subscription" &&
+  (plan === "pro" || plan === "black")
+) {
           await updateUserPlan({
             userId,
             plan,

@@ -1,5 +1,6 @@
 "use client";
 
+import { motion } from "framer-motion";
 import {
   Sparkles,
   Wand2,
@@ -27,7 +28,72 @@ import {
   MonitorPlay,
   Quote,
   Check,
+  PlayCircle,
+  Activity,
+  Timer,
+  GalleryVerticalEnd,
+  PanelTop,
+  Shield,
 } from "lucide-react";
+
+const fadeUp = {
+  hidden: { opacity: 0, y: 28 },
+  show: {
+    opacity: 1,
+    y: 0,
+    transition: {
+      duration: 0.6,
+      ease: [0.22, 1, 0.36, 1],
+    },
+  },
+};
+
+const fadeIn = {
+  hidden: { opacity: 0 },
+  show: {
+    opacity: 1,
+    transition: {
+      duration: 0.7,
+      ease: [0.22, 1, 0.36, 1],
+    },
+  },
+};
+
+const stagger = {
+  hidden: {},
+  show: {
+    transition: {
+      staggerChildren: 0.08,
+    },
+  },
+};
+
+function SectionReveal({ children, className = "", id }) {
+  return (
+    <motion.section
+      id={id}
+      initial="hidden"
+      whileInView="show"
+      viewport={{ once: true, amount: 0.14 }}
+      variants={stagger}
+      className={className}
+    >
+      {children}
+    </motion.section>
+  );
+}
+
+function CardGlow({ children, className = "" }) {
+  return (
+    <motion.div
+      whileHover={{ y: -8, scale: 1.015 }}
+      transition={{ duration: 0.25, ease: "easeOut" }}
+      className={className}
+    >
+      {children}
+    </motion.div>
+  );
+}
 
 export default function PhotoFlowLandingDashboard() {
   const stats = [
@@ -266,12 +332,42 @@ export default function PhotoFlowLandingDashboard() {
     "Menos desgaste",
   ];
 
+  const heroMiniCards = [
+    {
+      icon: Activity,
+      title: "Seu fluxo fica mais leve",
+      text: "Menos peso mental, menos horas travadas e mais clareza no dia a dia.",
+    },
+    {
+      icon: Timer,
+      title: "Mais tempo de volta",
+      text: "A parte repetitiva deixa de consumir a energia que deveria ir para o seu crescimento.",
+    },
+    {
+      icon: Shield,
+      title: "Entrega com mais segurança",
+      text: "Mais consistência entre as fotos e menos medo de revisar um lote quebrado.",
+    },
+  ];
+
   return (
     <div className="min-h-screen overflow-x-hidden bg-[#040711] text-white selection:bg-cyan-400/20 selection:text-white">
       <div className="pointer-events-none fixed inset-0">
-        <div className="absolute -top-40 left-[-10%] h-[440px] w-[440px] rounded-full bg-cyan-500/20 blur-3xl" />
-        <div className="absolute top-20 right-[-8%] h-[520px] w-[520px] rounded-full bg-fuchsia-500/14 blur-3xl" />
-        <div className="absolute bottom-[-80px] left-[28%] h-[360px] w-[360px] rounded-full bg-violet-600/18 blur-3xl" />
+        <motion.div
+          animate={{ x: [0, 20, 0], y: [0, -16, 0] }}
+          transition={{ duration: 12, repeat: Infinity, ease: "easeInOut" }}
+          className="absolute -top-40 left-[-10%] h-[440px] w-[440px] rounded-full bg-cyan-500/20 blur-3xl"
+        />
+        <motion.div
+          animate={{ x: [0, -16, 0], y: [0, 18, 0] }}
+          transition={{ duration: 15, repeat: Infinity, ease: "easeInOut" }}
+          className="absolute top-20 right-[-8%] h-[520px] w-[520px] rounded-full bg-fuchsia-500/14 blur-3xl"
+        />
+        <motion.div
+          animate={{ x: [0, 14, 0], y: [0, 14, 0] }}
+          transition={{ duration: 11, repeat: Infinity, ease: "easeInOut" }}
+          className="absolute bottom-[-80px] left-[28%] h-[360px] w-[360px] rounded-full bg-violet-600/18 blur-3xl"
+        />
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(56,189,248,0.09),transparent_26%)]" />
         <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.045)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.045)_1px,transparent_1px)] bg-[size:52px_52px] opacity-[0.05]" />
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(255,255,255,0.04),transparent_16%),radial-gradient(circle_at_80%_18%,rgba(255,255,255,0.03),transparent_18%),radial-gradient(circle_at_50%_80%,rgba(255,255,255,0.03),transparent_14%)]" />
@@ -280,7 +376,12 @@ export default function PhotoFlowLandingDashboard() {
 
       <header className="relative z-20 border-b border-white/10 bg-black/20 backdrop-blur-2xl">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-5 lg:px-8">
-          <div className="group flex items-center gap-3">
+          <motion.div
+            initial={{ opacity: 0, y: -14 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.55 }}
+            className="group flex items-center gap-3"
+          >
             <div className="relative flex h-12 w-12 items-center justify-center rounded-2xl border border-cyan-300/25 bg-gradient-to-br from-cyan-400/35 via-violet-500/25 to-fuchsia-500/25 shadow-[0_0_30px_rgba(59,130,246,0.22)] transition duration-300 group-hover:scale-[1.03]">
               <span className="text-base font-bold tracking-wider text-cyan-100">PF</span>
               <div className="absolute inset-0 rounded-2xl bg-white/[0.04] opacity-0 transition duration-300 group-hover:opacity-100" />
@@ -294,9 +395,14 @@ export default function PhotoFlowLandingDashboard() {
                 Premium AI Workflow
               </div>
             </div>
-          </div>
+          </motion.div>
 
-          <nav className="hidden items-center gap-8 text-sm text-white/66 md:flex">
+          <motion.nav
+            initial={{ opacity: 0, y: -14 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.55, delay: 0.08 }}
+            className="hidden items-center gap-8 text-sm text-white/66 md:flex"
+          >
             <a href="#beneficios" className="transition duration-200 hover:text-white">
               Benefícios
             </a>
@@ -309,9 +415,14 @@ export default function PhotoFlowLandingDashboard() {
             <a href="#depoimentos" className="transition duration-200 hover:text-white">
               Depoimentos
             </a>
-          </nav>
+          </motion.nav>
 
-          <div className="flex items-center gap-3">
+          <motion.div
+            initial={{ opacity: 0, y: -14 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.55, delay: 0.12 }}
+            className="flex items-center gap-3"
+          >
             <a
               href="/login"
               className="hidden rounded-full border border-white/10 bg-white/[0.04] px-5 py-2.5 text-sm font-medium text-white/80 transition duration-200 hover:border-white/20 hover:bg-white/[0.08] hover:text-white md:inline-flex"
@@ -330,44 +441,61 @@ export default function PhotoFlowLandingDashboard() {
                 <ArrowRight className="h-4 w-4 transition duration-300 group-hover:translate-x-0.5" />
               </span>
             </a>
-          </div>
+          </motion.div>
         </div>
       </header>
 
       <main className="relative z-10">
-        <section className="mx-auto grid max-w-7xl items-center gap-14 px-6 pb-20 pt-16 lg:grid-cols-[1.05fr_0.95fr] lg:px-8 lg:pb-28 lg:pt-24">
+        <motion.section
+          initial="hidden"
+          animate="show"
+          variants={stagger}
+          className="mx-auto grid max-w-7xl items-center gap-14 px-6 pb-16 pt-16 lg:grid-cols-[1.05fr_0.95fr] lg:px-8 lg:pb-24 lg:pt-24"
+        >
           <div>
-            <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-cyan-400/10 px-4 py-2 text-sm text-cyan-100 shadow-[0_0_40px_rgba(34,211,238,0.10)]">
+            <motion.div
+              variants={fadeUp}
+              className="mb-6 inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-cyan-400/10 px-4 py-2 text-sm text-cyan-100 shadow-[0_0_40px_rgba(34,211,238,0.10)]"
+            >
               <span className="h-2 w-2 rounded-full bg-cyan-300 shadow-[0_0_12px_rgba(34,211,238,0.8)]" />
               Feito para fotógrafos que querem velocidade sem perder padrão
-            </div>
+            </motion.div>
 
-            <h1 className="max-w-5xl text-5xl font-semibold leading-[0.96] tracking-[-0.06em] text-white md:text-6xl lg:text-7xl">
+            <motion.h1
+              variants={fadeUp}
+              className="max-w-5xl text-5xl font-semibold leading-[0.96] tracking-[-0.06em] text-white md:text-6xl lg:text-7xl"
+            >
               Menos tempo editando.
               <span className="mt-2 block bg-gradient-to-r from-cyan-300 via-violet-300 to-fuchsia-300 bg-clip-text text-transparent">
-                Mais tempo fotografando e faturando.
+                Mais tempo fotografando, atendendo e faturando.
               </span>
-            </h1>
+            </motion.h1>
 
-            <p className="mt-7 max-w-2xl text-lg leading-8 text-white/68 md:text-xl">
-              Edite centenas de fotos em minutos, com consistência e padrão profissional.
-              O <span className="font-semibold text-white">Photo Flow</span> entra para
-              tirar o peso da parte repetitiva, acelerar sua entrega e devolver
-              horas preciosas da sua rotina.
-            </p>
+            <motion.p
+              variants={fadeUp}
+              className="mt-7 max-w-2xl text-lg leading-8 text-white/68 md:text-xl"
+            >
+              Você não deveria passar horas presa na parte repetitiva de um trabalho
+              que já poderia estar andando. O <span className="font-semibold text-white">Photo Flow</span>
+              entra para devolver ritmo, padrão visual e leveza para a sua rotina.
+            </motion.p>
 
-            <div className="mt-8 flex flex-wrap gap-3">
-              {trustPills.map((item) => (
-                <div
+            <motion.div variants={fadeUp} className="mt-8 flex flex-wrap gap-3">
+              {trustPills.map((item, index) => (
+                <motion.div
                   key={item}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.35 + index * 0.05, duration: 0.35 }}
+                  whileHover={{ y: -3 }}
                   className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-xs uppercase tracking-[0.22em] text-white/58 backdrop-blur-xl"
                 >
                   {item}
-                </div>
+                </motion.div>
               ))}
-            </div>
+            </motion.div>
 
-            <div className="mt-10 flex flex-col gap-4 sm:flex-row">
+            <motion.div variants={fadeUp} className="mt-10 flex flex-col gap-4 sm:flex-row">
               <a
                 href="/pricing"
                 className="group relative inline-flex items-center justify-center overflow-hidden rounded-2xl px-7 py-4 text-base font-semibold text-slate-950 shadow-[0_0_50px_rgba(99,102,241,0.28)] transition duration-200 hover:scale-[1.02]"
@@ -387,18 +515,26 @@ export default function PhotoFlowLandingDashboard() {
                 Entrar na plataforma
                 <ChevronRight className="h-4 w-4" />
               </a>
-            </div>
+            </motion.div>
 
-            <div className="mt-6 flex items-center gap-3 text-sm text-white/48">
+            <motion.div
+              variants={fadeUp}
+              className="mt-6 flex items-center gap-3 text-sm text-white/48"
+            >
               <MonitorPlay className="h-4 w-4 text-cyan-300" />
               Plataforma pensada para fluxo real, não para parecer bonita só no anúncio
-            </div>
+            </motion.div>
 
-            <div className="mt-12 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <motion.div
+              variants={stagger}
+              className="mt-12 grid gap-4 sm:grid-cols-2 xl:grid-cols-4"
+            >
               {stats.map((item) => (
-                <div
+                <motion.div
                   key={item.label}
-                  className="group relative overflow-hidden rounded-3xl border border-white/10 bg-white/[0.05] p-5 backdrop-blur-xl transition duration-300 hover:-translate-y-1 hover:border-cyan-300/25 hover:bg-white/[0.07] hover:shadow-[0_10px_40px_rgba(59,130,246,0.08)]"
+                  variants={fadeUp}
+                  whileHover={{ y: -6, scale: 1.015 }}
+                  className="group relative overflow-hidden rounded-3xl border border-white/10 bg-white/[0.05] p-5 backdrop-blur-xl transition duration-300 hover:border-cyan-300/25 hover:bg-white/[0.07] hover:shadow-[0_14px_48px_rgba(59,130,246,0.10)]"
                 >
                   <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/40 to-transparent opacity-40" />
                   <div className="text-3xl font-semibold tracking-[-0.05em] text-white">
@@ -408,14 +544,24 @@ export default function PhotoFlowLandingDashboard() {
                   <div className="mt-3 text-xs uppercase tracking-[0.22em] text-cyan-200/70">
                     {item.hint}
                   </div>
-                </div>
+                </motion.div>
               ))}
-            </div>
+            </motion.div>
           </div>
 
-          <div className="relative">
-            <div className="absolute -inset-8 rounded-[2.7rem] bg-gradient-to-r from-cyan-400/20 via-violet-500/10 to-fuchsia-500/20 blur-2xl" />
-            <div className="relative rounded-[2rem] border border-white/12 bg-[linear-gradient(180deg,rgba(255,255,255,0.12),rgba(255,255,255,0.04))] p-4 shadow-[0_20px_90px_rgba(0,0,0,0.5)] backdrop-blur-2xl">
+          <motion.div variants={fadeIn} className="relative">
+            <motion.div
+              animate={{ opacity: [0.45, 0.8, 0.45], scale: [1, 1.03, 1] }}
+              transition={{ duration: 4.8, repeat: Infinity, ease: "easeInOut" }}
+              className="absolute -inset-8 rounded-[2.7rem] bg-gradient-to-r from-cyan-400/20 via-violet-500/10 to-fuchsia-500/20 blur-2xl"
+            />
+
+            <motion.div
+              initial={{ opacity: 0, y: 30, rotateX: 6 }}
+              animate={{ opacity: 1, y: 0, rotateX: 0 }}
+              transition={{ duration: 0.85, delay: 0.15 }}
+              className="relative rounded-[2rem] border border-white/12 bg-[linear-gradient(180deg,rgba(255,255,255,0.12),rgba(255,255,255,0.04))] p-4 shadow-[0_20px_90px_rgba(0,0,0,0.5)] backdrop-blur-2xl"
+            >
               <div className="rounded-[1.7rem] border border-white/10 bg-[#09101f] p-4">
                 <div className="flex flex-col gap-4 border-b border-white/10 pb-4 sm:flex-row sm:items-center sm:justify-between">
                   <div>
@@ -424,72 +570,80 @@ export default function PhotoFlowLandingDashboard() {
                       Wedding Batch • 1.284 arquivos
                     </div>
                   </div>
-                  <div className="inline-flex rounded-full border border-cyan-400/30 bg-cyan-400/10 px-3 py-1 text-xs uppercase tracking-[0.22em] text-cyan-200 shadow-[0_0_18px_rgba(34,211,238,0.15)]">
+                  <motion.div
+                    animate={{
+                      boxShadow: [
+                        "0 0 0 rgba(34,211,238,0.00)",
+                        "0 0 22px rgba(34,211,238,0.18)",
+                        "0 0 0 rgba(34,211,238,0.00)",
+                      ],
+                    }}
+                    transition={{ duration: 3.4, repeat: Infinity, ease: "easeInOut" }}
+                    className="inline-flex rounded-full border border-cyan-400/30 bg-cyan-400/10 px-3 py-1 text-xs uppercase tracking-[0.22em] text-cyan-200 shadow-[0_0_18px_rgba(34,211,238,0.15)]"
+                  >
                     processamento premium
-                  </div>
+                  </motion.div>
                 </div>
 
                 <div className="mt-5 grid gap-4">
-                  <div className="rounded-3xl border border-white/8 bg-white/[0.03] p-4">
+                  <motion.div whileHover={{ y: -4 }} className="rounded-3xl border border-white/8 bg-white/[0.03] p-4">
                     <div className="flex items-center justify-between text-sm text-white/60">
                       <span>Pipeline do lote</span>
                       <span>76%</span>
                     </div>
                     <div className="mt-3 h-2.5 rounded-full bg-white/10">
-                      <div className="h-2.5 w-[76%] rounded-full bg-gradient-to-r from-cyan-400 via-violet-500 to-fuchsia-500 shadow-[0_0_18px_rgba(34,211,238,0.18)]" />
+                      <motion.div
+                        initial={{ width: 0 }}
+                        animate={{ width: "76%" }}
+                        transition={{ duration: 1.2, delay: 0.4, ease: "easeOut" }}
+                        className="h-2.5 rounded-full bg-gradient-to-r from-cyan-400 via-violet-500 to-fuchsia-500 shadow-[0_0_18px_rgba(34,211,238,0.18)]"
+                      />
                     </div>
 
                     <div className="mt-4 grid grid-cols-2 gap-3 text-sm text-white/55">
-                      <div className="rounded-2xl bg-white/[0.03] p-3">
+                      <motion.div whileHover={{ scale: 1.03 }} className="rounded-2xl bg-white/[0.03] p-3">
                         <div className="text-white/40">Selecionadas</div>
-                        <div className="mt-1 text-xl font-semibold text-white">
-                          842
-                        </div>
-                      </div>
-                      <div className="rounded-2xl bg-white/[0.03] p-3">
+                        <div className="mt-1 text-xl font-semibold text-white">842</div>
+                      </motion.div>
+                      <motion.div whileHover={{ scale: 1.03 }} className="rounded-2xl bg-white/[0.03] p-3">
                         <div className="text-white/40">Ruído</div>
-                        <div className="mt-1 text-xl font-semibold text-white">
-                          Sob controle
-                        </div>
-                      </div>
+                        <div className="mt-1 text-xl font-semibold text-white">Sob controle</div>
+                      </motion.div>
                     </div>
-                  </div>
+                  </motion.div>
 
                   <div className="grid gap-3 sm:grid-cols-2">
-                    {gallery.map((item) => {
+                    {gallery.map((item, index) => {
                       const Icon = item.icon;
                       return (
-                        <div
+                        <motion.div
                           key={item.title}
-                          className="group overflow-hidden rounded-3xl border border-white/10 bg-white/[0.03] transition duration-300 hover:-translate-y-1 hover:border-white/18 hover:bg-white/[0.05]"
+                          initial={{ opacity: 0, y: 16 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ duration: 0.45, delay: 0.5 + index * 0.07 }}
+                          whileHover={{ y: -5, scale: 1.02 }}
+                          className="group overflow-hidden rounded-3xl border border-white/10 bg-white/[0.03] transition duration-300 hover:border-white/18 hover:bg-white/[0.05]"
                         >
                           <div className="relative h-28 bg-gradient-to-br from-cyan-500/30 via-violet-500/15 to-fuchsia-500/25">
                             <div className="absolute left-4 top-4 flex h-10 w-10 items-center justify-center rounded-2xl border border-white/15 bg-black/20 backdrop-blur-xl">
                               <Icon className="h-4.5 w-4.5 text-white" />
                             </div>
+                            <div className="absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-black/25 to-transparent" />
                           </div>
                           <div className="p-4">
-                            <div className="text-base font-medium text-white">
-                              {item.title}
-                            </div>
-                            <div className="mt-1 text-sm text-cyan-200/75">
-                              {item.tag}
-                            </div>
-                            <div className="mt-3 text-sm leading-6 text-white/48">
-                              {item.description}
-                            </div>
+                            <div className="text-base font-medium text-white">{item.title}</div>
+                            <div className="mt-1 text-sm text-cyan-200/75">{item.tag}</div>
+                            <div className="mt-3 text-sm leading-6 text-white/48">{item.description}</div>
                           </div>
-                        </div>
+                        </motion.div>
                       );
                     })}
                   </div>
 
-                  <div className="rounded-3xl border border-white/8 bg-white/[0.03] p-4">
+                  <motion.div whileHover={{ y: -4 }} className="rounded-3xl border border-white/8 bg-white/[0.03] p-4">
                     <div className="mb-3 flex items-center justify-between">
                       <div>
-                        <div className="text-sm text-white/45">
-                          Resultado no lote
-                        </div>
+                        <div className="text-sm text-white/45">Resultado no lote</div>
                         <div className="mt-1 text-lg font-medium text-white">
                           Mais unidade visual, menos retrabalho na revisão
                         </div>
@@ -513,29 +667,50 @@ export default function PhotoFlowLandingDashboard() {
                       passa menos tempo corrigindo diferenças que nunca deveriam ter
                       saído tão distantes.
                     </p>
-                  </div>
+                  </motion.div>
                 </div>
               </div>
-            </div>
-          </div>
-        </section>
+            </motion.div>
+          </motion.div>
+        </motion.section>
 
-        <section
-          id="beneficios"
-          className="mx-auto max-w-7xl px-6 py-8 lg:px-8 lg:py-16"
-        >
+        <SectionReveal className="mx-auto max-w-7xl px-6 py-2 lg:px-8 lg:py-4">
+          <div className="grid gap-5 md:grid-cols-3">
+            {heroMiniCards.map((item) => {
+              const Icon = item.icon;
+              return (
+                <motion.div
+                  key={item.title}
+                  variants={fadeUp}
+                  whileHover={{ y: -6, scale: 1.015 }}
+                  className="rounded-[1.8rem] border border-white/10 bg-white/[0.05] p-6 backdrop-blur-xl transition duration-300 hover:border-white/18 hover:bg-white/[0.07]"
+                >
+                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-gradient-to-br from-cyan-400/20 via-violet-500/20 to-fuchsia-500/20">
+                    <Icon className="h-5 w-5 text-white" />
+                  </div>
+                  <h3 className="mt-5 text-xl font-semibold text-white">{item.title}</h3>
+                  <p className="mt-3 leading-7 text-white/58">{item.text}</p>
+                </motion.div>
+              );
+            })}
+          </div>
+        </SectionReveal>
+
+        <SectionReveal id="beneficios" className="mx-auto max-w-7xl px-6 py-8 lg:px-8 lg:py-16">
           <div className="max-w-3xl">
-            <div className="text-sm uppercase tracking-[0.28em] text-cyan-200/80">
+            <motion.div variants={fadeUp} className="text-sm uppercase tracking-[0.28em] text-cyan-200/80">
               Benefícios
-            </div>
-            <h2 className="mt-3 text-3xl font-semibold tracking-[-0.05em] text-white md:text-5xl">
+            </motion.div>
+            <motion.h2
+              variants={fadeUp}
+              className="mt-3 text-3xl font-semibold tracking-[-0.05em] text-white md:text-5xl"
+            >
               O operacional fica mais leve. Sua entrega continua com cara de trabalho sério.
-            </h2>
-            <p className="mt-5 text-lg leading-8 text-white/62">
-              Photo Flow foi desenhado para fazer sentido na rotina real de quem
-              vive de fotografia. Menos atrito, menos retrabalho, mais clareza e
-              mais tempo para o que realmente agrega valor.
-            </p>
+            </motion.h2>
+            <motion.p variants={fadeUp} className="mt-5 text-lg leading-8 text-white/62">
+              Photo Flow foi desenhado para fazer sentido na rotina real de quem vive de fotografia.
+              Menos atrito, menos retrabalho, mais clareza e mais tempo para o que realmente agrega valor.
+            </motion.p>
           </div>
 
           <div className="mt-12 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
@@ -543,9 +718,11 @@ export default function PhotoFlowLandingDashboard() {
               const Icon = feature.icon;
 
               return (
-                <div
+                <motion.div
                   key={feature.title}
-                  className="group relative overflow-hidden rounded-[1.8rem] border border-white/10 bg-white/[0.05] p-6 backdrop-blur-xl transition duration-300 hover:-translate-y-1 hover:border-cyan-300/30 hover:bg-white/[0.07] hover:shadow-[0_14px_48px_rgba(34,211,238,0.08)]"
+                  variants={fadeUp}
+                  whileHover={{ y: -8, scale: 1.015 }}
+                  className="group relative overflow-hidden rounded-[1.8rem] border border-white/10 bg-white/[0.05] p-6 backdrop-blur-xl transition duration-300 hover:border-cyan-300/30 hover:bg-white/[0.07] hover:shadow-[0_14px_48px_rgba(34,211,238,0.08)]"
                 >
                   <div className="absolute right-[-30px] top-[-30px] h-24 w-24 rounded-full bg-white/[0.03] blur-2xl transition duration-300 group-hover:scale-125" />
                   <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/40 to-transparent opacity-30" />
@@ -563,71 +740,60 @@ export default function PhotoFlowLandingDashboard() {
                     </div>
                   </div>
 
-                  <h3 className="text-xl font-semibold text-white">
-                    {feature.title}
-                  </h3>
-
-                  <p className="mt-3 leading-7 text-white/58">
-                    {feature.description}
-                  </p>
-
+                  <h3 className="text-xl font-semibold text-white">{feature.title}</h3>
+                  <p className="mt-3 leading-7 text-white/58">{feature.description}</p>
                   <div className="mt-5 flex items-center gap-2 text-sm text-cyan-200/75">
                     <BadgeCheck className="h-4 w-4" />
                     feito para rotina profissional
                   </div>
-                </div>
+                </motion.div>
               );
             })}
           </div>
-        </section>
+        </SectionReveal>
 
-        <section className="mx-auto max-w-7xl px-6 py-6 lg:px-8 lg:py-8">
+        <SectionReveal className="mx-auto max-w-7xl px-6 py-6 lg:px-8 lg:py-8">
           <div className="grid gap-6 lg:grid-cols-3">
             {premiumPoints.map((item) => {
               const Icon = item.icon;
               return (
-                <div
+                <motion.div
                   key={item.title}
-                  className="rounded-[2rem] border border-white/10 bg-white/[0.05] p-7 backdrop-blur-xl"
+                  variants={fadeUp}
+                  whileHover={{ y: -6, scale: 1.015 }}
+                  className="rounded-[2rem] border border-white/10 bg-white/[0.05] p-7 backdrop-blur-xl transition duration-300 hover:border-white/18 hover:bg-white/[0.07]"
                 >
                   <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-gradient-to-br from-cyan-400/20 via-violet-500/20 to-fuchsia-500/20">
                     <Icon className="h-5 w-5 text-white" />
                   </div>
-                  <h3 className="mt-5 text-2xl font-semibold tracking-[-0.04em] text-white">
-                    {item.title}
-                  </h3>
+                  <h3 className="mt-5 text-2xl font-semibold tracking-[-0.04em] text-white">{item.title}</h3>
                   <p className="mt-4 leading-7 text-white/58">{item.text}</p>
-                </div>
+                </motion.div>
               );
             })}
           </div>
-        </section>
+        </SectionReveal>
 
-        <section
-          id="como-funciona"
-          className="mx-auto grid max-w-7xl gap-8 px-6 py-10 lg:grid-cols-[0.88fr_1.12fr] lg:px-8 lg:py-20"
-        >
+        <SectionReveal id="como-funciona" className="mx-auto grid max-w-7xl gap-8 px-6 py-10 lg:grid-cols-[0.88fr_1.12fr] lg:px-8 lg:py-20">
           <div className="rounded-[2rem] border border-white/10 bg-white/[0.05] p-8 backdrop-blur-xl">
-            <div className="text-sm uppercase tracking-[0.28em] text-fuchsia-200/80">
+            <motion.div variants={fadeUp} className="text-sm uppercase tracking-[0.28em] text-fuchsia-200/80">
               Como funciona
-            </div>
-            <h2 className="mt-4 text-3xl font-semibold tracking-[-0.04em] text-white md:text-4xl">
+            </motion.div>
+            <motion.h2 variants={fadeUp} className="mt-4 text-3xl font-semibold tracking-[-0.04em] text-white md:text-4xl">
               Um fluxo elegante, direto e muito mais inteligente.
-            </h2>
-            <p className="mt-4 text-white/60 leading-7">
-              Você não deveria gastar energia tentando entender a plataforma antes
-              de conseguir trabalhar. O produto precisa fazer sentido rápido.
-            </p>
+            </motion.h2>
+            <motion.p variants={fadeUp} className="mt-4 text-white/60 leading-7">
+              Você não deveria gastar energia tentando entender a plataforma antes de conseguir trabalhar.
+              O produto precisa fazer sentido rápido.
+            </motion.p>
 
-            <div className="mt-8 rounded-[1.7rem] border border-white/8 bg-[#0d1528] p-5">
+            <motion.div variants={fadeUp} whileHover={{ y: -4 }} className="mt-8 rounded-[1.7rem] border border-white/8 bg-[#0d1528] p-5">
               <div className="text-sm text-white/45">Resumo do processo</div>
-              <div className="mt-3 text-lg font-medium text-white">
-                Upload → IA → revisão → exportação
-              </div>
+              <div className="mt-3 text-lg font-medium text-white">Upload → IA → revisão → exportação</div>
               <p className="mt-3 text-sm leading-6 text-white/50">
                 O peso técnico fica nos bastidores. Na sua frente, a experiência precisa ser clara.
               </p>
-            </div>
+            </motion.div>
           </div>
 
           <div className="grid gap-4">
@@ -635,8 +801,10 @@ export default function PhotoFlowLandingDashboard() {
               const Icon = item.icon;
 
               return (
-                <div
+                <motion.div
                   key={item.step}
+                  variants={fadeUp}
+                  whileHover={{ y: -6, scale: 1.01 }}
                   className="group flex items-start gap-5 rounded-[1.8rem] border border-white/10 bg-white/[0.04] p-6 backdrop-blur-xl transition duration-300 hover:border-white/18 hover:bg-white/[0.06]"
                 >
                   <div className="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-400 via-violet-500 to-fuchsia-500 text-sm font-bold text-slate-950 shadow-[0_0_25px_rgba(139,92,246,0.25)]">
@@ -646,41 +814,34 @@ export default function PhotoFlowLandingDashboard() {
 
                   <div className="flex-1">
                     <div className="flex items-center justify-between gap-4">
-                      <div className="text-lg font-medium text-white">
-                        {item.title}
-                      </div>
+                      <div className="text-lg font-medium text-white">{item.title}</div>
                       <div className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-[11px] uppercase tracking-[0.22em] text-white/45">
                         Etapa {item.step}
                       </div>
                     </div>
-                    <div className="mt-2 text-white/50 leading-7">
-                      {item.description}
-                    </div>
+                    <div className="mt-2 text-white/50 leading-7">{item.description}</div>
                   </div>
-                </div>
+                </motion.div>
               );
             })}
           </div>
-        </section>
+        </SectionReveal>
 
-        <section
-          id="dashboard"
-          className="mx-auto max-w-7xl px-6 py-12 lg:px-8 lg:py-20"
-        >
+        <SectionReveal id="dashboard" className="mx-auto max-w-7xl px-6 py-12 lg:px-8 lg:py-20">
           <div className="mb-10 max-w-3xl">
-            <div className="text-sm uppercase tracking-[0.28em] text-violet-200/80">
+            <motion.div variants={fadeUp} className="text-sm uppercase tracking-[0.28em] text-violet-200/80">
               Plataforma
-            </div>
-            <h2 className="mt-3 text-3xl font-semibold tracking-[-0.05em] text-white md:text-5xl">
+            </motion.div>
+            <motion.h2 variants={fadeUp} className="mt-3 text-3xl font-semibold tracking-[-0.05em] text-white md:text-5xl">
               Bonita o suficiente para impressionar. Clara o suficiente para não atrapalhar.
-            </h2>
-            <p className="mt-5 text-lg leading-8 text-white/62">
-              O importante aparece primeiro: projetos, andamento, ações rápidas e
-              o que precisa ser decidido. Sem ruído visual desnecessário.
-            </p>
+            </motion.h2>
+            <motion.p variants={fadeUp} className="mt-5 text-lg leading-8 text-white/62">
+              O importante aparece primeiro: projetos, andamento, ações rápidas e o que precisa ser decidido.
+              Sem ruído visual desnecessário.
+            </motion.p>
           </div>
 
-          <div className="overflow-hidden rounded-[2rem] border border-white/12 bg-[linear-gradient(180deg,rgba(255,255,255,0.08),rgba(255,255,255,0.03))] p-4 shadow-[0_20px_80px_rgba(0,0,0,0.45)] backdrop-blur-2xl">
+          <motion.div variants={fadeUp} className="overflow-hidden rounded-[2rem] border border-white/12 bg-[linear-gradient(180deg,rgba(255,255,255,0.08),rgba(255,255,255,0.03))] p-4 shadow-[0_20px_80px_rgba(0,0,0,0.45)] backdrop-blur-2xl">
             <div className="grid gap-4 lg:grid-cols-[270px_1fr]">
               <aside className="rounded-[1.6rem] border border-white/10 bg-[#0a1020] p-5">
                 <div className="mb-8 flex items-center gap-3">
@@ -694,16 +855,10 @@ export default function PhotoFlowLandingDashboard() {
                 </div>
 
                 <div className="space-y-2 text-sm">
-                  {[
-                    "Dashboard",
-                    "Projetos",
-                    "Processamento",
-                    "Estilos",
-                    "Exportações",
-                    "Configurações",
-                  ].map((item, idx) => (
-                    <div
+                  {["Dashboard", "Projetos", "Processamento", "Estilos", "Exportações", "Configurações"].map((item, idx) => (
+                    <motion.div
                       key={item}
+                      whileHover={{ x: 5 }}
                       className={`rounded-2xl border px-4 py-3 transition duration-200 ${
                         idx === 0
                           ? "border-cyan-300/20 bg-gradient-to-r from-cyan-400/20 via-violet-500/20 to-fuchsia-500/20 text-white shadow-[0_0_22px_rgba(99,102,241,0.12)]"
@@ -711,34 +866,28 @@ export default function PhotoFlowLandingDashboard() {
                       }`}
                     >
                       {item}
-                    </div>
+                    </motion.div>
                   ))}
                 </div>
 
-                <div className="mt-8 rounded-[1.4rem] border border-white/8 bg-white/[0.03] p-4">
+                <motion.div whileHover={{ y: -4 }} className="mt-8 rounded-[1.4rem] border border-white/8 bg-white/[0.03] p-4">
                   <div className="text-sm text-white/45">Plano</div>
-                  <div className="mt-1 text-lg font-medium text-white">
-                    Pro Studio
-                  </div>
-                  <div className="mt-2 text-sm text-cyan-200/70">
-                    IA em lote • exportação rápida • revisão premium
-                  </div>
+                  <div className="mt-1 text-lg font-medium text-white">Pro Studio</div>
+                  <div className="mt-2 text-sm text-cyan-200/70">IA em lote • exportação rápida • revisão premium</div>
                   <a
                     href="/pricing"
                     className="mt-5 inline-flex w-full items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-medium text-white/85 transition duration-200 hover:border-white/20 hover:bg-white/[0.08]"
                   >
                     Gerenciar plano
                   </a>
-                </div>
+                </motion.div>
               </aside>
 
               <div className="rounded-[1.6rem] border border-white/10 bg-[#0a1020] p-5">
                 <div className="flex flex-col gap-4 border-b border-white/10 pb-5 md:flex-row md:items-center md:justify-between">
                   <div>
                     <div className="text-sm text-white/45">Bem-vinda de volta</div>
-                    <div className="mt-1 text-2xl font-semibold tracking-[-0.04em] text-white">
-                      Seus projetos em andamento
-                    </div>
+                    <div className="mt-1 text-2xl font-semibold tracking-[-0.04em] text-white">Seus projetos em andamento</div>
                   </div>
 
                   <div className="flex flex-wrap gap-3">
@@ -768,9 +917,7 @@ export default function PhotoFlowLandingDashboard() {
                     <div className="mb-4 flex items-center justify-between">
                       <div>
                         <div className="text-sm text-white/45">Projetos recentes</div>
-                        <div className="text-lg font-medium text-white">
-                          Visão clara do que está acontecendo
-                        </div>
+                        <div className="text-lg font-medium text-white">Visão clara do que está acontecendo</div>
                       </div>
                       <div className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs text-white/55">
                         Atualizado agora
@@ -778,23 +925,22 @@ export default function PhotoFlowLandingDashboard() {
                     </div>
 
                     <div className="space-y-4">
-                      {projects.map((project) => (
-                        <div
+                      {projects.map((project, index) => (
+                        <motion.div
                           key={project.name}
+                          initial={{ opacity: 0, y: 14 }}
+                          whileInView={{ opacity: 1, y: 0 }}
+                          viewport={{ once: true }}
+                          transition={{ duration: 0.4, delay: index * 0.06 }}
+                          whileHover={{ y: -4 }}
                           className="rounded-3xl border border-white/8 bg-[#0d1528] p-4 transition duration-300 hover:border-white/15 hover:bg-[#111a30]"
                         >
                           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                             <div>
-                              <div className="font-medium text-white">
-                                {project.name}
-                              </div>
-                              <div className="mt-1 text-sm text-white/45">
-                                {project.photos}
-                              </div>
+                              <div className="font-medium text-white">{project.name}</div>
+                              <div className="mt-1 text-sm text-white/45">{project.photos}</div>
                             </div>
-                            <div
-                              className={`inline-flex rounded-full border px-3 py-1 text-xs ${project.statusClass}`}
-                            >
+                            <div className={`inline-flex rounded-full border px-3 py-1 text-xs ${project.statusClass}`}>
                               {project.status}
                             </div>
                           </div>
@@ -805,9 +951,12 @@ export default function PhotoFlowLandingDashboard() {
                               <span>{project.progress}%</span>
                             </div>
                             <div className="h-2.5 rounded-full bg-white/10">
-                              <div
+                              <motion.div
+                                initial={{ width: 0 }}
+                                whileInView={{ width: `${project.progress}%` }}
+                                viewport={{ once: true }}
+                                transition={{ duration: 0.9, delay: 0.15 + index * 0.06, ease: "easeOut" }}
                                 className={`h-2.5 rounded-full bg-gradient-to-r ${project.gradient}`}
-                                style={{ width: `${project.progress}%` }}
                               />
                             </div>
                           </div>
@@ -818,25 +967,20 @@ export default function PhotoFlowLandingDashboard() {
                               Abrir projeto
                             </button>
                           </div>
-                        </div>
+                        </motion.div>
                       ))}
                     </div>
                   </div>
 
                   <div className="grid gap-4">
-                    <div className="rounded-[1.5rem] border border-white/8 bg-white/[0.03] p-4">
+                    <motion.div whileHover={{ y: -4 }} className="rounded-[1.5rem] border border-white/8 bg-white/[0.03] p-4">
                       <div className="text-sm text-white/45">Ação rápida</div>
-                      <div className="mt-2 text-lg font-medium text-white">
-                        Processar um novo lote
-                      </div>
+                      <div className="mt-2 text-lg font-medium text-white">Processar um novo lote</div>
                       <div className="mt-4 rounded-3xl border border-cyan-400/20 bg-gradient-to-br from-cyan-400/10 via-violet-500/10 to-fuchsia-500/10 p-5 shadow-[0_0_30px_rgba(34,211,238,0.08)]">
                         <div className="text-sm text-white/55">Estilo selecionado</div>
-                        <div className="mt-1 text-xl font-semibold text-white">
-                          Premium Night
-                        </div>
+                        <div className="mt-1 text-xl font-semibold text-white">Premium Night</div>
                         <p className="mt-3 text-sm leading-6 text-white/50">
-                          Baixa luz, ruído difícil e resultado mais elegante para
-                          quem quer entregar com presença visual.
+                          Baixa luz, ruído difícil e resultado mais elegante para quem quer entregar com presença visual.
                         </p>
                         <a
                           href="/upload"
@@ -845,65 +989,51 @@ export default function PhotoFlowLandingDashboard() {
                           Processar agora
                         </a>
                       </div>
-                    </div>
+                    </motion.div>
 
-                    <div className="rounded-[1.5rem] border border-white/8 bg-white/[0.03] p-4">
+                    <motion.div whileHover={{ y: -4 }} className="rounded-[1.5rem] border border-white/8 bg-white/[0.03] p-4">
                       <div className="text-sm text-white/45">Métricas</div>
                       <div className="mt-4 grid grid-cols-2 gap-3">
                         {metrics.map((metric) => {
                           const Icon = metric.icon;
                           return (
-                            <div
-                              key={metric.label}
-                              className="rounded-2xl bg-[#0d1528] p-4"
-                            >
+                            <motion.div key={metric.label} whileHover={{ scale: 1.03 }} className="rounded-2xl bg-[#0d1528] p-4">
                               <div className="flex items-center gap-2 text-sm text-white/40">
                                 <Icon className="h-4 w-4" />
                                 {metric.label}
                               </div>
-                              <div className="mt-2 text-xl font-semibold text-white">
-                                {metric.value}
-                              </div>
-                            </div>
+                              <div className="mt-2 text-xl font-semibold text-white">{metric.value}</div>
+                            </motion.div>
                           );
                         })}
                       </div>
-                    </div>
+                    </motion.div>
 
-                    <div className="rounded-[1.5rem] border border-white/8 bg-white/[0.03] p-4">
+                    <motion.div whileHover={{ y: -4 }} className="rounded-[1.5rem] border border-white/8 bg-white/[0.03] p-4">
                       <div className="text-sm text-white/45">Resumo rápido</div>
-                      <div className="mt-2 text-lg font-medium text-white">
-                        Tudo mais leve de acompanhar
-                      </div>
+                      <div className="mt-2 text-lg font-medium text-white">Tudo mais leve de acompanhar</div>
                       <p className="mt-3 text-sm leading-6 text-white/50">
-                        O painel ajuda você a decidir rápido, agir rápido e não
-                        perder energia com informação mal distribuída.
+                        O painel ajuda você a decidir rápido, agir rápido e não perder energia com informação mal distribuída.
                       </p>
-                    </div>
+                    </motion.div>
                   </div>
                 </div>
               </div>
             </div>
-          </div>
-        </section>
+          </motion.div>
+        </SectionReveal>
 
-        <section
-          id="pricing-teaser"
-          className="mx-auto max-w-7xl px-6 py-10 lg:px-8 lg:py-16"
-        >
-          <div className="rounded-[2.2rem] border border-white/12 bg-[linear-gradient(135deg,rgba(255,255,255,0.07),rgba(255,255,255,0.03))] p-8 shadow-[0_20px_80px_rgba(0,0,0,0.38)] backdrop-blur-2xl md:p-10">
+        <SectionReveal id="pricing-teaser" className="mx-auto max-w-7xl px-6 py-10 lg:px-8 lg:py-16">
+          <motion.div variants={fadeUp} className="rounded-[2.2rem] border border-white/12 bg-[linear-gradient(135deg,rgba(255,255,255,0.07),rgba(255,255,255,0.03))] p-8 shadow-[0_20px_80px_rgba(0,0,0,0.38)] backdrop-blur-2xl md:p-10">
             <div className="grid gap-8 lg:grid-cols-[1.05fr_0.95fr] lg:items-center">
               <div>
-                <div className="text-sm uppercase tracking-[0.28em] text-cyan-200/80">
-                  Planos e créditos
-                </div>
+                <div className="text-sm uppercase tracking-[0.28em] text-cyan-200/80">Planos e créditos</div>
                 <h2 className="mt-3 text-3xl font-semibold tracking-[-0.05em] text-white md:text-5xl">
                   Escolha o formato que combina com a sua fase e com o seu ritmo.
                 </h2>
                 <p className="mt-5 text-lg leading-8 text-white/62">
-                  Seja para testar a plataforma, comprar créditos avulsos ou subir
-                  para uma operação mais forte, o caminho até os planos está claro,
-                  bonito e direto.
+                  Seja para testar a plataforma, comprar créditos avulsos ou subir para uma operação mais forte,
+                  o caminho até os planos está claro, bonito e direto.
                 </p>
 
                 <div className="mt-8 flex flex-col gap-4 sm:flex-row">
@@ -929,53 +1059,46 @@ export default function PhotoFlowLandingDashboard() {
               </div>
 
               <div className="grid gap-4 md:grid-cols-2">
-                <div className="rounded-[1.8rem] border border-white/10 bg-white/[0.05] p-5">
+                <CardGlow className="rounded-[1.8rem] border border-white/10 bg-white/[0.05] p-5">
                   <div className="text-sm text-white/45">Assinaturas</div>
-                  <div className="mt-2 text-xl font-semibold text-white">
-                    Pro e Black
-                  </div>
+                  <div className="mt-2 text-xl font-semibold text-white">Pro e Black</div>
                   <p className="mt-3 text-sm leading-6 text-white/52">
-                    Para quem quer mais fôlego operacional, recorrência e uma
-                    experiência mais completa dentro da plataforma.
+                    Para quem quer mais fôlego operacional, recorrência e uma experiência mais completa dentro da plataforma.
                   </p>
-                </div>
+                </CardGlow>
 
-                <div className="rounded-[1.8rem] border border-white/10 bg-white/[0.05] p-5">
+                <CardGlow className="rounded-[1.8rem] border border-white/10 bg-white/[0.05] p-5">
                   <div className="text-sm text-white/45">Créditos avulsos</div>
-                  <div className="mt-2 text-xl font-semibold text-white">
-                    100 ou 300 créditos
-                  </div>
+                  <div className="mt-2 text-xl font-semibold text-white">100 ou 300 créditos</div>
                   <p className="mt-3 text-sm leading-6 text-white/52">
                     Ideal para testar, validar o fluxo e comprar conforme a sua demanda.
                   </p>
-                </div>
+                </CardGlow>
               </div>
             </div>
-          </div>
-        </section>
+          </motion.div>
+        </SectionReveal>
 
-        <section
-          id="depoimentos"
-          className="mx-auto max-w-7xl px-6 py-12 lg:px-8 lg:py-18"
-        >
+        <SectionReveal id="depoimentos" className="mx-auto max-w-7xl px-6 py-12 lg:px-8 lg:py-18">
           <div className="mb-10 max-w-3xl">
-            <div className="text-sm uppercase tracking-[0.28em] text-cyan-200/80">
+            <motion.div variants={fadeUp} className="text-sm uppercase tracking-[0.28em] text-cyan-200/80">
               Depoimentos
-            </div>
-            <h2 className="mt-3 text-3xl font-semibold tracking-[-0.05em] text-white md:text-5xl">
+            </motion.div>
+            <motion.h2 variants={fadeUp} className="mt-3 text-3xl font-semibold tracking-[-0.05em] text-white md:text-5xl">
               Quem usa sente o peso sair do processo.
-            </h2>
-            <p className="mt-5 text-lg leading-8 text-white/62">
-              Produto bom não entrega só velocidade. Ele muda a forma como a
-              rotina pesa no final da semana.
-            </p>
+            </motion.h2>
+            <motion.p variants={fadeUp} className="mt-5 text-lg leading-8 text-white/62">
+              Produto bom não entrega só velocidade. Ele muda a forma como a rotina pesa no final da semana.
+            </motion.p>
           </div>
 
           <div className="grid gap-5 lg:grid-cols-3">
             {testimonials.map((item) => (
-              <div
+              <motion.div
                 key={item.name}
-                className="relative overflow-hidden rounded-[1.8rem] border border-white/10 bg-white/[0.05] p-6 backdrop-blur-xl transition duration-300 hover:-translate-y-1 hover:border-white/18 hover:bg-white/[0.07]"
+                variants={fadeUp}
+                whileHover={{ y: -6, scale: 1.015 }}
+                className="relative overflow-hidden rounded-[1.8rem] border border-white/10 bg-white/[0.05] p-6 backdrop-blur-xl transition duration-300 hover:border-white/18 hover:bg-white/[0.07]"
               >
                 <div className="absolute right-[-20px] top-[-20px] h-24 w-24 rounded-full bg-white/[0.03] blur-2xl" />
                 <Quote className="mb-5 h-9 w-9 text-cyan-300/60" />
@@ -984,46 +1107,40 @@ export default function PhotoFlowLandingDashboard() {
                   <div className="font-medium text-white">{item.name}</div>
                   <div className="mt-1 text-sm text-white/45">{item.role}</div>
                 </div>
-              </div>
+              </motion.div>
             ))}
           </div>
-        </section>
+        </SectionReveal>
 
-        <section className="mx-auto max-w-7xl px-6 py-8 lg:px-8 lg:py-14">
+        <SectionReveal className="mx-auto max-w-7xl px-6 py-8 lg:px-8 lg:py-14">
           <div className="grid gap-6 lg:grid-cols-2">
             {faqs.map((item) => (
-              <div
+              <motion.div
                 key={item.question}
+                variants={fadeUp}
+                whileHover={{ y: -4 }}
                 className="rounded-[1.8rem] border border-white/10 bg-white/[0.05] p-6 backdrop-blur-xl"
               >
-                <h3 className="text-xl font-semibold text-white">
-                  {item.question}
-                </h3>
+                <h3 className="text-xl font-semibold text-white">{item.question}</h3>
                 <p className="mt-3 leading-7 text-white/58">{item.answer}</p>
-              </div>
+              </motion.div>
             ))}
           </div>
-        </section>
+        </SectionReveal>
 
-        <section
-          id="cta"
-          className="mx-auto max-w-7xl px-6 pb-24 pt-6 lg:px-8"
-        >
-          <div className="relative overflow-hidden rounded-[2.3rem] border border-white/12 bg-[linear-gradient(135deg,rgba(34,211,238,0.12),rgba(139,92,246,0.12),rgba(217,70,239,0.12))] px-8 py-12 shadow-[0_20px_90px_rgba(0,0,0,0.42)] backdrop-blur-2xl md:px-12 md:py-14">
+        <SectionReveal id="cta" className="mx-auto max-w-7xl px-6 pb-24 pt-6 lg:px-8">
+          <motion.div variants={fadeUp} className="relative overflow-hidden rounded-[2.3rem] border border-white/12 bg-[linear-gradient(135deg,rgba(34,211,238,0.12),rgba(139,92,246,0.12),rgba(217,70,239,0.12))] px-8 py-12 shadow-[0_20px_90px_rgba(0,0,0,0.42)] backdrop-blur-2xl md:px-12 md:py-14">
             <div className="absolute -right-8 top-0 h-44 w-44 rounded-full bg-cyan-400/20 blur-3xl" />
             <div className="absolute bottom-0 left-20 h-44 w-44 rounded-full bg-fuchsia-500/20 blur-3xl" />
 
             <div className="relative z-10 max-w-3xl">
-              <div className="text-sm uppercase tracking-[0.28em] text-cyan-100/80">
-                Photo Flow
-              </div>
+              <div className="text-sm uppercase tracking-[0.28em] text-cyan-100/80">Photo Flow</div>
               <h2 className="mt-4 text-3xl font-semibold tracking-[-0.05em] text-white md:text-5xl">
                 Menos horas presas no operacional. Mais energia no que realmente faz seu nome crescer.
               </h2>
               <p className="mt-5 text-lg leading-8 text-white/70">
-                Se a sua rotina exige volume, prazo e padrão visual, o próximo
-                passo é simples: entrar, escolher o plano certo e deixar a parte
-                pesada com o sistema.
+                Se a sua rotina exige volume, prazo e padrão visual, o próximo passo é simples:
+                entrar, escolher o plano certo e deixar a parte pesada com o sistema.
               </p>
 
               <div className="mt-8 flex flex-col gap-4 sm:flex-row">
@@ -1062,8 +1179,8 @@ export default function PhotoFlowLandingDashboard() {
                 </div>
               </div>
             </div>
-          </div>
-        </section>
+          </motion.div>
+        </SectionReveal>
       </main>
     </div>
   );

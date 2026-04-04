@@ -28,10 +28,12 @@ import {
   Wallet,
   CheckCircle,
   LoaderCircle,
+  Wifi,
 } from "lucide-react";
 
 export default function DashboardPage() {
   const router = useRouter();
+
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [authChecking, setAuthChecking] = useState(true);
@@ -49,6 +51,8 @@ export default function DashboardPage() {
   const [paymentSyncing, setPaymentSyncing] = useState(false);
   const [paymentSyncDone, setPaymentSyncDone] = useState(false);
   const [paymentSyncMessage, setPaymentSyncMessage] = useState("");
+  const [realtimeConnected, setRealtimeConnected] = useState(false);
+  const [lastSyncedAt, setLastSyncedAt] = useState(null);
 
   const normalizePlan = useCallback((plan) => {
     if (!plan) return "free";
@@ -72,6 +76,24 @@ export default function DashboardPage() {
     [normalizePlan]
   );
 
+  const readCheckoutParams = useCallback(() => {
+    if (typeof window === "undefined") {
+      return {
+        success: null,
+        planFromUrl: "free",
+        sessionFromUrl: null,
+      };
+    }
+
+    const params = new URLSearchParams(window.location.search);
+
+    return {
+      success: params.get("success"),
+      planFromUrl: normalizePlan(params.get("plan")),
+      sessionFromUrl: params.get("session_id"),
+    };
+  }, [normalizePlan]);
+
   const fetchProfile = useCallback(
     async (userId, fallbackEmail = "") => {
       setProfileLoading(true);
@@ -82,9 +104,6 @@ export default function DashboardPage() {
           .select("credits, plan, email")
           .eq("id", userId)
           .single();
-
-        console.log("PROFILE DATA:", profileData);
-        console.log("PROFILE ERROR:", profileError);
 
         if (profileError) {
           console.error("ERRO PROFILE:", profileError);
@@ -104,6 +123,7 @@ export default function DashboardPage() {
 
         const normalized = normalizeProfile(profileData, fallbackEmail);
         setProfile(normalized);
+        setLastSyncedAt(new Date().toISOString());
         return normalized;
       } catch (error) {
         console.error("Erro ao carregar profile:", error);
@@ -185,9 +205,6 @@ export default function DashboardPage() {
       try {
         const { data, error } = await supabase.auth.getUser();
 
-        console.log("USER LOGADO:", data?.user);
-        console.log("AUTH ERROR:", error);
-
         if (error || !data?.user) {
           router.replace("/login");
           return;
@@ -196,7 +213,6 @@ export default function DashboardPage() {
         if (cancelled) return;
 
         setUser(data.user);
-
         await fetchProfile(data.user.id, data.user.email || "");
       } catch (error) {
         console.error("Erro ao validar sessão:", error);
@@ -234,125 +250,212 @@ export default function DashboardPage() {
     };
   }, [authChecking, user, loadJobs]);
 
-useEffect(() => {
-  if (!user?.id) return;
+  useEffect(() => {
+    if (!user?.id) return;
 
-  const success =
-    typeof window !== "undefined"
-      ? new URLSearchParams(window.location.search).get("success")
-      : null;
+    const channel = supabase
+      .channel(`profile-sync-${user.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "profiles",
+          filter: `id=eq.${user.id}`,
+        },
+        async (payload) => {
+          const previousCredits = Number(profile?.credits ?? 0);
+          const previousPlan = normalizePlan(profile?.plan);
 
-  const planFromUrl =
-    typeof window !== "undefined"
-      ? normalizePlan(new URLSearchParams(window.location.search).get("plan"))
-      : "free";
+          const fresh = normalizeProfile(payload.new, user.email || "");
+          setProfile(fresh);
+          setLastSyncedAt(new Date().toISOString());
 
-  const sessionFromUrl =
-    typeof window !== "undefined"
-      ? new URLSearchParams(window.location.search).get("session_id")
-      : null;
+          const creditsIncreased = fresh.credits > previousCredits;
+          const planChanged = fresh.plan !== previousPlan;
 
-  if (success !== "true") return;
+          if (paymentSyncing || creditsIncreased || planChanged) {
+            setPaymentSyncing(false);
+            setPaymentSyncDone(true);
 
-  let cancelled = false;
-  let intervalId;
+            if (planChanged && creditsIncreased) {
+              setPaymentSyncMessage(
+                `Pagamento confirmado. Seu plano agora é ${fresh.plan === "black" ? "Black" : fresh.plan === "pro" ? "Pro" : "Free"} e seus créditos foram atualizados.`
+              );
+            } else if (planChanged) {
+              setPaymentSyncMessage(
+                `Pagamento confirmado. Seu plano agora é ${fresh.plan === "black" ? "Black" : fresh.plan === "pro" ? "Pro" : "Free"}.`
+              );
+            } else if (creditsIncreased) {
+              setPaymentSyncMessage(
+                `Pagamento confirmado. Seus créditos agora são ${fresh.credits.toLocaleString("pt-BR")}.`
+              );
+            }
 
-  async function syncAfterCheckout() {
-    setPaymentSyncing(true);
-    setPaymentSyncDone(false);
-    setPaymentSyncMessage("Confirmando seu pagamento e sincronizando plano e créditos...");
-
-    const initialCredits = Number(profile?.credits ?? 0);
-    const initialPlan = normalizePlan(profile?.plan);
-
-    let attempts = 0;
-    const maxAttempts = 8;
-
-    async function trySync() {
-      attempts += 1;
-
-      if (cancelled) return;
-
-      const freshProfile = await fetchProfile(user.id, user.email || "");
-      await loadJobs();
-
-      if (cancelled || !freshProfile) return;
-
-      const freshPlan = normalizePlan(freshProfile.plan);
-      const freshCredits = Number(freshProfile.credits ?? 0);
-
-      const planChanged = freshPlan !== initialPlan;
-      const creditsChanged = freshCredits !== initialCredits;
-
-      const paidPlanArrived =
-        planFromUrl === "black"
-          ? freshPlan === "black"
-          : planFromUrl === "pro"
-          ? freshPlan === "pro" || freshPlan === "black"
-          : false;
-
-      const creditsArrived = creditsChanged && freshCredits >= initialCredits;
-
-      const syncCompleted = paidPlanArrived || planChanged || creditsArrived;
-
-      if (syncCompleted) {
-        setPaymentSyncing(false);
-        setPaymentSyncDone(true);
-
-        if (paidPlanArrived) {
-          setPaymentSyncMessage(
-            `Pagamento confirmado. Seu plano já foi atualizado para ${freshPlan === "black" ? "Black" : "Pro"}.`
-          );
-        } else if (creditsArrived) {
-          setPaymentSyncMessage(
-            `Pagamento confirmado. Seus créditos foram atualizados para ${freshCredits.toLocaleString("pt-BR")}.`
-          );
-        } else {
-          setPaymentSyncMessage("Pagamento confirmado. Sua dashboard foi atualizada.");
+            if (typeof window !== "undefined") {
+              window.history.replaceState({}, "", "/dashboard");
+            }
+          }
         }
+      )
+      .subscribe((status) => {
+        setRealtimeConnected(status === "SUBSCRIBED");
+      });
 
-        const cleanUrl = "/dashboard";
-        window.history.replaceState({}, "", cleanUrl);
+    return () => {
+      supabase.removeChannel(channel);
+      setRealtimeConnected(false);
+    };
+  }, [
+    user,
+    profile?.credits,
+    profile?.plan,
+    profileLoading,
+    paymentSyncing,
+    normalizePlan,
+    normalizeProfile,
+  ]);
 
-        return;
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const onFocus = async () => {
+      await refreshDashboardData({ silent: true });
+    };
+
+    const onVisibility = async () => {
+      if (document.visibilityState === "visible") {
+        await refreshDashboardData({ silent: true });
       }
+    };
 
-      if (attempts >= maxAttempts) {
-        setPaymentSyncing(false);
-        setPaymentSyncDone(true);
-        setPaymentSyncMessage(
-          "Seu pagamento foi processado. A dashboard já buscou os dados novamente. Se ainda faltar atualizar algo, clique em Atualizar agora."
-        );
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
 
-        const cleanUrl = "/dashboard";
-        window.history.replaceState({}, "", cleanUrl);
-        return;
-      }
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [user, refreshDashboardData]);
 
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const { success, planFromUrl, sessionFromUrl } = readCheckoutParams();
+
+    if (success !== "true") return;
+
+    let cancelled = false;
+    let intervalId;
+
+    async function syncAfterCheckout() {
+      setPaymentSyncing(true);
+      setPaymentSyncDone(false);
       setPaymentSyncMessage(
-        `Sincronizando pagamento${sessionFromUrl ? " do checkout" : ""}... tentativa ${attempts} de ${maxAttempts}.`
+        "Confirmando seu pagamento e sincronizando plano e créditos..."
       );
 
-      intervalId = setTimeout(trySync, 2200);
+      const initialCredits = Number(profile?.credits ?? 0);
+      const initialPlan = normalizePlan(profile?.plan);
+
+      let attempts = 0;
+      const maxAttempts = 12;
+
+      async function trySync() {
+        attempts += 1;
+
+        if (cancelled) return;
+
+        const freshProfile = await fetchProfile(user.id, user.email || "");
+        await loadJobs();
+
+        if (cancelled || !freshProfile) return;
+
+        const freshPlan = normalizePlan(freshProfile.plan);
+        const freshCredits = Number(freshProfile.credits ?? 0);
+
+        const planChanged = freshPlan !== initialPlan;
+        const creditsChanged = freshCredits !== initialCredits;
+
+        const paidPlanArrived =
+          planFromUrl === "black"
+            ? freshPlan === "black"
+            : planFromUrl === "pro"
+            ? freshPlan === "pro" || freshPlan === "black"
+            : false;
+
+        const creditsArrived = creditsChanged && freshCredits >= initialCredits;
+        const alreadyFreshPaidPlan =
+          planFromUrl === "black"
+            ? freshPlan === "black"
+            : planFromUrl === "pro"
+            ? freshPlan === "pro" || freshPlan === "black"
+            : false;
+
+        const syncCompleted =
+          paidPlanArrived ||
+          planChanged ||
+          creditsArrived ||
+          alreadyFreshPaidPlan;
+
+        if (syncCompleted) {
+          setPaymentSyncing(false);
+          setPaymentSyncDone(true);
+
+          if (paidPlanArrived || alreadyFreshPaidPlan) {
+            setPaymentSyncMessage(
+              `Pagamento confirmado. Seu plano já foi atualizado para ${freshPlan === "black" ? "Black" : freshPlan === "pro" ? "Pro" : "Free"}.`
+            );
+          } else if (creditsArrived) {
+            setPaymentSyncMessage(
+              `Pagamento confirmado. Seus créditos foram atualizados para ${freshCredits.toLocaleString("pt-BR")}.`
+            );
+          } else {
+            setPaymentSyncMessage(
+              "Pagamento confirmado. Sua dashboard foi atualizada."
+            );
+          }
+
+          window.history.replaceState({}, "", "/dashboard");
+          return;
+        }
+
+        if (attempts >= maxAttempts) {
+          setPaymentSyncing(false);
+          setPaymentSyncDone(true);
+          setPaymentSyncMessage(
+            "Seu pagamento foi processado. A dashboard buscou os dados novamente. Se algo ainda não aparecer, clique em Atualizar agora."
+          );
+
+          window.history.replaceState({}, "", "/dashboard");
+          return;
+        }
+
+        setPaymentSyncMessage(
+          `Sincronizando pagamento${sessionFromUrl ? " do checkout" : ""}... tentativa ${attempts} de ${maxAttempts}.`
+        );
+
+        intervalId = setTimeout(trySync, 1800);
+      }
+
+      trySync();
     }
 
-    trySync();
-  }
+    syncAfterCheckout();
 
-  syncAfterCheckout();
-
-  return () => {
-    cancelled = true;
-    if (intervalId) clearTimeout(intervalId);
-  };
-}, [
-  user,
-  profile?.credits,
-  profile?.plan,
-  fetchProfile,
-  loadJobs,
-  normalizePlan,
-]);
+    return () => {
+      cancelled = true;
+      if (intervalId) clearTimeout(intervalId);
+    };
+  }, [
+    user,
+    profile?.credits,
+    profile?.plan,
+    fetchProfile,
+    loadJobs,
+    normalizePlan,
+    readCheckoutParams,
+  ]);
 
   async function handleLogout() {
     try {
@@ -532,6 +635,12 @@ useEffect(() => {
   const planHeadline = getPlanHeadline(profile?.plan);
   const creditsMessage = getCreditsMessage(credits);
   const displayEmail = profile?.email || user?.email || "usuária";
+  const syncedLabel = lastSyncedAt
+    ? new Date(lastSyncedAt).toLocaleTimeString("pt-BR", {
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : null;
 
   if (authChecking) {
     return (
@@ -646,9 +755,7 @@ useEffect(() => {
                   <div className="text-sm font-semibold tracking-[0.18em] uppercase">
                     {paymentSyncing ? "Sincronizando pagamento" : "Dashboard atualizada"}
                   </div>
-                  <div className="mt-1 text-sm text-white/80">
-                    {paymentSyncMessage}
-                  </div>
+                  <div className="mt-1 text-sm text-white/80">{paymentSyncMessage}</div>
                 </div>
               </div>
 
@@ -684,8 +791,7 @@ useEffect(() => {
             </h1>
 
             <p className="mt-5 max-w-2xl text-lg leading-8 text-white/62">
-              Aqui você acompanha seus lotes, o andamento real do processamento e
-              os resultados prontos para revisão, sem confusão e sem excesso de informação.
+              Aqui você acompanha seus lotes, o andamento real do processamento e os resultados prontos para revisão, sem confusão e sem excesso de informação.
             </p>
 
             <div className="mt-6 rounded-[1.6rem] border border-white/8 bg-[#0d1528] p-5">
@@ -697,18 +803,25 @@ useEffect(() => {
                   </div>
                 </div>
 
-                <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-white/70">
-                  {profileLoading ? (
-                    <>
-                      <LoaderCircle size={14} className="animate-spin" />
-                      Atualizando dados
-                    </>
-                  ) : (
-                    <>
-                      <CheckCircle2 size={14} />
-                      Dados sincronizados
-                    </>
-                  )}
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-white/70">
+                    {profileLoading ? (
+                      <>
+                        <LoaderCircle size={14} className="animate-spin" />
+                        Atualizando dados
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 size={14} />
+                        Dados sincronizados
+                      </>
+                    )}
+                  </div>
+
+                  <div className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs ${realtimeConnected ? "border-emerald-400/25 bg-emerald-400/10 text-emerald-200" : "border-amber-400/25 bg-amber-400/10 text-amber-200"}`}>
+                    <Wifi size={13} />
+                    {realtimeConnected ? "Tempo real ativo" : "Tempo real aguardando"}
+                  </div>
                 </div>
               </div>
 
@@ -725,6 +838,11 @@ useEffect(() => {
                   <Wallet size={14} />
                   {credits.toLocaleString("pt-BR")} crédito{credits !== 1 ? "s" : ""}
                 </div>
+                {syncedLabel && (
+                  <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-white/70">
+                    Última sync às {syncedLabel}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -769,13 +887,11 @@ useEffect(() => {
                 </div>
 
                 <div className="rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1.5 text-xs font-medium text-cyan-200">
-                  {profileLoading ? "Sincronizando" : "Em tempo real"}
+                  {profileLoading ? "Sincronizando" : realtimeConnected ? "Tempo real" : "Atualizado"}
                 </div>
               </div>
 
-              <p className="mt-3 leading-7 text-white/58">
-                {creditsMessage}
-              </p>
+              <p className="mt-3 leading-7 text-white/58">{creditsMessage}</p>
 
               <div className="mt-6 grid gap-3">
                 <div className="grid gap-3 sm:grid-cols-2">
@@ -1020,7 +1136,7 @@ useEffect(() => {
                         </div>
                         <div className="mt-1 text-sm text-white/45">
                           {(job.totalPhotos || 0).toLocaleString("pt-BR")} foto
-                          {(job.totalPhotos || 0) !== 1 ? "s" : ""} • criado em{" "}
+                          {(job.totalPhotos || 0) !== 1 ? "s" : ""} • criado em {" "}
                           {formatDate(job.createdAt)}
                         </div>
                       </div>

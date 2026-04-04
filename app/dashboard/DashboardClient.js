@@ -234,127 +234,125 @@ export default function DashboardPage() {
     };
   }, [authChecking, user, loadJobs]);
 
-  useEffect(() => {
-    if (!user?.id) return;
+useEffect(() => {
+  if (!user?.id) return;
 
-const success =
-  typeof window !== "undefined"
-    ? new URLSearchParams(window.location.search).get("success")
-    : null;
+  const success =
+    typeof window !== "undefined"
+      ? new URLSearchParams(window.location.search).get("success")
+      : null;
 
-const planFromUrl =
-  typeof window !== "undefined"
-    ? normalizePlan(new URLSearchParams(window.location.search).get("plan"))
-    : "free";
+  const planFromUrl =
+    typeof window !== "undefined"
+      ? normalizePlan(new URLSearchParams(window.location.search).get("plan"))
+      : "free";
 
-const sessionFromUrl =
-  typeof window !== "undefined"
-    ? new URLSearchParams(window.location.search).get("session_id")
-    : null;
+  const sessionFromUrl =
+    typeof window !== "undefined"
+      ? new URLSearchParams(window.location.search).get("session_id")
+      : null;
 
-    if (success !== "true") return;
+  if (success !== "true") return;
 
-    let cancelled = false;
-    let intervalId;
+  let cancelled = false;
+  let intervalId;
 
-    async function syncAfterCheckout() {
-      setPaymentSyncing(true);
-      setPaymentSyncDone(false);
-      setPaymentSyncMessage("Confirmando seu pagamento e sincronizando plano e créditos...");
+  async function syncAfterCheckout() {
+    setPaymentSyncing(true);
+    setPaymentSyncDone(false);
+    setPaymentSyncMessage("Confirmando seu pagamento e sincronizando plano e créditos...");
 
-      const initialCredits = Number(profile?.credits ?? 0);
-      const initialPlan = normalizePlan(profile?.plan);
+    const initialCredits = Number(profile?.credits ?? 0);
+    const initialPlan = normalizePlan(profile?.plan);
 
-      let attempts = 0;
-      const maxAttempts = 8;
+    let attempts = 0;
+    const maxAttempts = 8;
 
-      async function trySync() {
-        attempts += 1;
+    async function trySync() {
+      attempts += 1;
 
-        if (cancelled) return;
+      if (cancelled) return;
 
-        const freshProfile = await fetchProfile(user.id, user.email || "");
-        await loadJobs();
+      const freshProfile = await fetchProfile(user.id, user.email || "");
+      await loadJobs();
 
-        if (cancelled || !freshProfile) return;
+      if (cancelled || !freshProfile) return;
 
-        const freshPlan = normalizePlan(freshProfile.plan);
-        const freshCredits = Number(freshProfile.credits ?? 0);
+      const freshPlan = normalizePlan(freshProfile.plan);
+      const freshCredits = Number(freshProfile.credits ?? 0);
 
-        const planChanged = freshPlan !== initialPlan;
-        const creditsChanged = freshCredits !== initialCredits;
+      const planChanged = freshPlan !== initialPlan;
+      const creditsChanged = freshCredits !== initialCredits;
 
-        const paidPlanArrived =
-          planFromUrl === "black"
-            ? freshPlan === "black"
-            : planFromUrl === "pro"
-            ? freshPlan === "pro" || freshPlan === "black"
-            : false;
+      const paidPlanArrived =
+        planFromUrl === "black"
+          ? freshPlan === "black"
+          : planFromUrl === "pro"
+          ? freshPlan === "pro" || freshPlan === "black"
+          : false;
 
-        const creditsArrived = creditsChanged && freshCredits >= initialCredits;
+      const creditsArrived = creditsChanged && freshCredits >= initialCredits;
 
-        const syncCompleted =
-          paidPlanArrived || planChanged || creditsArrived;
+      const syncCompleted = paidPlanArrived || planChanged || creditsArrived;
 
-        if (syncCompleted) {
-          setPaymentSyncing(false);
-          setPaymentSyncDone(true);
+      if (syncCompleted) {
+        setPaymentSyncing(false);
+        setPaymentSyncDone(true);
 
-          if (paidPlanArrived) {
-            setPaymentSyncMessage(
-              `Pagamento confirmado. Seu plano já foi atualizado para ${freshPlan === "black" ? "Black" : "Pro"}.`
-            );
-          } else if (creditsArrived) {
-            setPaymentSyncMessage(
-              `Pagamento confirmado. Seus créditos foram atualizados para ${freshCredits.toLocaleString("pt-BR")}.`
-            );
-          } else {
-            setPaymentSyncMessage("Pagamento confirmado. Sua dashboard foi atualizada.");
-          }
-
-          const cleanUrl = "/dashboard";
-          window.history.replaceState({}, "", cleanUrl);
-
-          return;
-        }
-
-        if (attempts >= maxAttempts) {
-          setPaymentSyncing(false);
-          setPaymentSyncDone(true);
+        if (paidPlanArrived) {
           setPaymentSyncMessage(
-            "Seu pagamento foi processado. A dashboard já buscou os dados novamente. Se ainda faltar atualizar algo, clique em Atualizar agora."
+            `Pagamento confirmado. Seu plano já foi atualizado para ${freshPlan === "black" ? "Black" : "Pro"}.`
           );
-
-          const cleanUrl = "/dashboard";
-          window.history.replaceState({}, "", cleanUrl);
-          return;
+        } else if (creditsArrived) {
+          setPaymentSyncMessage(
+            `Pagamento confirmado. Seus créditos foram atualizados para ${freshCredits.toLocaleString("pt-BR")}.`
+          );
+        } else {
+          setPaymentSyncMessage("Pagamento confirmado. Sua dashboard foi atualizada.");
         }
 
-        setPaymentSyncMessage(
-          `Sincronizando pagamento${sessionFromUrl ? " do checkout" : ""}... tentativa ${attempts} de ${maxAttempts}.`
-        );
+        const cleanUrl = "/dashboard";
+        window.history.replaceState({}, "", cleanUrl);
 
-        intervalId = setTimeout(trySync, 2200);
+        return;
       }
 
-      trySync();
+      if (attempts >= maxAttempts) {
+        setPaymentSyncing(false);
+        setPaymentSyncDone(true);
+        setPaymentSyncMessage(
+          "Seu pagamento foi processado. A dashboard já buscou os dados novamente. Se ainda faltar atualizar algo, clique em Atualizar agora."
+        );
+
+        const cleanUrl = "/dashboard";
+        window.history.replaceState({}, "", cleanUrl);
+        return;
+      }
+
+      setPaymentSyncMessage(
+        `Sincronizando pagamento${sessionFromUrl ? " do checkout" : ""}... tentativa ${attempts} de ${maxAttempts}.`
+      );
+
+      intervalId = setTimeout(trySync, 2200);
     }
 
-    syncAfterCheckout();
+    trySync();
+  }
 
-    return () => {
-      cancelled = true;
-      if (intervalId) clearTimeout(intervalId);
-    };
-  }, [
-    user,
-    searchParams,
-    profile?.credits,
-    profile?.plan,
-    fetchProfile,
-    loadJobs,
-    normalizePlan,
-  ]);
+  syncAfterCheckout();
+
+  return () => {
+    cancelled = true;
+    if (intervalId) clearTimeout(intervalId);
+  };
+}, [
+  user,
+  profile?.credits,
+  profile?.plan,
+  fetchProfile,
+  loadJobs,
+  normalizePlan,
+]);
 
   async function handleLogout() {
     try {

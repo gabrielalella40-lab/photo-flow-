@@ -4,37 +4,45 @@ import { createClient } from "@supabase/supabase-js";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
-const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+function getStripe() {
+  if (!process.env.STRIPE_SECRET_KEY) {
+    throw new Error("STRIPE_SECRET_KEY não configurada.");
+  }
 
-const supabaseUrl =
-  process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
-
-const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-if (!stripeSecretKey) {
-  throw new Error("STRIPE_SECRET_KEY não configurada.");
+  return new Stripe(process.env.STRIPE_SECRET_KEY);
 }
 
-if (!webhookSecret) {
-  throw new Error("STRIPE_WEBHOOK_SECRET não configurada.");
+function getWebhookSecret() {
+  if (!process.env.STRIPE_WEBHOOK_SECRET) {
+    throw new Error("STRIPE_WEBHOOK_SECRET não configurada.");
+  }
+
+  return process.env.STRIPE_WEBHOOK_SECRET;
 }
 
-if (!supabaseUrl) {
-  throw new Error("SUPABASE_URL ou NEXT_PUBLIC_SUPABASE_URL não configurada.");
-}
+function getSupabaseAdmin() {
+  const supabaseUrl =
+    process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
 
-if (!supabaseServiceRoleKey) {
-  throw new Error("SUPABASE_SERVICE_ROLE_KEY não configurada.");
-}
+  const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-const stripe = new Stripe(stripeSecretKey);
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey);
+  if (!supabaseUrl) {
+    throw new Error("SUPABASE_URL ou NEXT_PUBLIC_SUPABASE_URL não configurada.");
+  }
+
+  if (!supabaseServiceRoleKey) {
+    throw new Error("SUPABASE_SERVICE_ROLE_KEY não configurada.");
+  }
+
+  return createClient(supabaseUrl, supabaseServiceRoleKey);
+}
 
 /**
  * Garante que o perfil exista.
  */
 async function ensureProfile(userId, email = null) {
+  const supabaseAdmin = getSupabaseAdmin();
+
   const payload = {
     id: userId,
     updated_at: new Date().toISOString(),
@@ -60,6 +68,8 @@ async function updateUserPlan({
   subscriptionId = null,
   customerId = null,
 }) {
+  const supabaseAdmin = getSupabaseAdmin();
+
   const payload = {
     plan,
     updated_at: new Date().toISOString(),
@@ -89,6 +99,8 @@ async function updateUserPlan({
 async function getProfileByCustomerId(customerId) {
   if (!customerId) return null;
 
+  const supabaseAdmin = getSupabaseAdmin();
+
   const { data, error } = await supabaseAdmin
     .from("profiles")
     .select("id, email, plan, stripe_customer_id, stripe_subscription_id")
@@ -107,6 +119,8 @@ async function getProfileByCustomerId(customerId) {
  */
 async function getProfileBySubscriptionId(subscriptionId) {
   if (!subscriptionId) return null;
+
+  const supabaseAdmin = getSupabaseAdmin();
 
   const { data, error } = await supabaseAdmin
     .from("profiles")
@@ -135,6 +149,8 @@ async function addCredits({
   stripeSessionId,
   stripePaymentIntentId = null,
 }) {
+  const supabaseAdmin = getSupabaseAdmin();
+
   const { error } = await supabaseAdmin.rpc("add_credits_after_purchase", {
     p_user_id: userId,
     p_credits: credits,
@@ -185,12 +201,10 @@ function getPlanFromSession(session) {
 
 /**
  * Descobre o plano real a partir da assinatura da Stripe.
- * Aqui não usamos o plano atual salvo no banco como verdade.
  */
 function resolvePlanFromSubscription(subscription) {
   const status = subscription?.status;
 
-  // só mantém plano pago se a assinatura estiver válida
   if (status !== "active" && status !== "trialing") {
     return "free";
   }
@@ -210,7 +224,6 @@ function resolvePlanFromSubscription(subscription) {
     return "pro";
   }
 
-  // fallback via metadata da assinatura
   const metadataPlan = subscription?.metadata?.plan;
 
   if (metadataPlan === "black") return "black";
@@ -231,6 +244,9 @@ export async function POST(request) {
   let event;
 
   try {
+    const stripe = getStripe();
+    const webhookSecret = getWebhookSecret();
+
     event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
   } catch (error) {
     console.error("Erro ao validar assinatura do webhook:", error.message);
@@ -238,12 +254,9 @@ export async function POST(request) {
   }
 
   try {
+    const stripe = getStripe();
+
     switch (event.type) {
-      /**
-       * CHECKOUT CONCLUÍDO
-       * Aqui vinculamos o usuário ao customer/subscription
-       * e já liberamos o plano imediatamente.
-       */
       case "checkout.session.completed":
       case "checkout.session.async_payment_succeeded": {
         let session = event.data.object;
@@ -302,7 +315,6 @@ export async function POST(request) {
 
         await ensureProfile(userId, customerEmail);
 
-        // COMPRA DE CRÉDITOS
         if (session.mode === "payment" && credits > 0) {
           await addCredits({
             userId,
@@ -320,7 +332,6 @@ export async function POST(request) {
           });
         }
 
-        // ASSINATURA DE PLANO
         if (
           session.mode === "subscription" &&
           (plan === "pro" || plan === "black")
@@ -343,10 +354,6 @@ export async function POST(request) {
         break;
       }
 
-      /**
-       * ASSINATURA ATUALIZADA
-       * Aqui mantemos a dashboard sincronizada conforme o status real da assinatura.
-       */
       case "customer.subscription.updated":
       case "customer.subscription.created": {
         const subscription = event.data.object;
@@ -394,10 +401,6 @@ export async function POST(request) {
         break;
       }
 
-      /**
-       * ASSINATURA CANCELADA/EXCLUÍDA
-       * Aqui derrubamos o plano para free.
-       */
       case "customer.subscription.deleted": {
         const subscription = event.data.object;
 

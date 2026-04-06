@@ -33,7 +33,8 @@ import {
 
 export default function DashboardPage() {
   const router = useRouter();
-  const getSupabase = () => getSupabaseClient();
+  const supabase = useMemo(() => getSupabaseClient(), []);
+
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [authChecking, setAuthChecking] = useState(true);
@@ -66,13 +67,11 @@ export default function DashboardPage() {
   }, []);
 
   const normalizeProfile = useCallback(
-    (profileData, fallbackEmail = "") => {
-      return {
-        credits: Number(profileData?.credits ?? 0),
-        plan: normalizePlan(profileData?.plan),
-        email: profileData?.email || fallbackEmail || "",
-      };
-    },
+    (profileData, fallbackEmail = "") => ({
+      credits: Number(profileData?.credits ?? 0),
+      plan: normalizePlan(profileData?.plan),
+      email: profileData?.email || fallbackEmail || "",
+    }),
     [normalizePlan]
   );
 
@@ -99,26 +98,14 @@ export default function DashboardPage() {
       setProfileLoading(true);
 
       try {
-        const { data: profileData, error: profileError } = await getsupabase
+        const { data: profileData, error: profileError } = await supabase
           .from("profiles")
           .select("credits, plan, email")
           .eq("id", userId)
-          .single();
+          .maybeSingle();
 
         if (profileError) {
-          console.error("ERRO PROFILE:", profileError);
-
-          const fallback = normalizeProfile(
-            {
-              credits: 0,
-              plan: "free",
-              email: fallbackEmail,
-            },
-            fallbackEmail
-          );
-
-          setProfile(fallback);
-          return fallback;
+          throw profileError;
         }
 
         const normalized = normalizeProfile(profileData, fallbackEmail);
@@ -143,7 +130,7 @@ export default function DashboardPage() {
         setProfileLoading(false);
       }
     },
-    [normalizeProfile]
+    [supabase, normalizeProfile]
   );
 
   const loadJobs = useCallback(async () => {
@@ -151,9 +138,27 @@ export default function DashboardPage() {
       setJobsLoading(true);
       setJobsError("");
 
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (sessionError) {
+        throw new Error(sessionError.message || "Erro ao validar sessão.");
+      }
+
+      const accessToken = session?.access_token;
+
+      if (!accessToken) {
+        throw new Error("Usuário não autenticado.");
+      }
+
       const res = await fetch("/api/jobs", {
         method: "GET",
         cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
       });
 
       const data = await res.json();
@@ -164,8 +169,16 @@ export default function DashboardPage() {
         );
       }
 
-      setJobs(Array.isArray(data.jobs) ? data.jobs : []);
-      return Array.isArray(data.jobs) ? data.jobs : [];
+      const safeJobs = Array.isArray(data.jobs) ? data.jobs : [];
+
+      safeJobs.sort((a, b) => {
+        const dateA = new Date(a?.createdAt || 0).getTime();
+        const dateB = new Date(b?.createdAt || 0).getTime();
+        return dateB - dateA;
+      });
+
+      setJobs(safeJobs);
+      return safeJobs;
     } catch (error) {
       setJobsError(
         error?.message || "Erro inesperado ao carregar os projetos."
@@ -174,7 +187,7 @@ export default function DashboardPage() {
     } finally {
       setJobsLoading(false);
     }
-  }, []);
+  }, [supabase]);
 
   const refreshDashboardData = useCallback(
     async ({ silent = false } = {}) => {
@@ -198,80 +211,67 @@ export default function DashboardPage() {
     [user, fetchProfile, loadJobs]
   );
 
-useEffect(() => {
-  let cancelled = false;
+  useEffect(() => {
+    let cancelled = false;
 
-  async function checkUser() {
-    try {
-      const { data: sessionData, error: sessionError } =
-        await getSupabase().auth.getSession();
+    async function checkUser() {
+      try {
+        const { data: sessionData, error: sessionError } =
+          await supabase.auth.getSession();
 
-      if (sessionError || !sessionData?.session?.user) {
+        if (sessionError || !sessionData?.session?.user) {
+          router.replace("/login");
+          return;
+        }
+
+        const currentUser = sessionData.session.user;
+
+        if (cancelled) return;
+
+        setUser(currentUser);
+        await Promise.all([
+          fetchProfile(currentUser.id, currentUser.email || ""),
+          loadJobs(),
+        ]);
+      } catch (error) {
+        console.error("Erro ao validar sessão:", error);
         router.replace("/login");
+      } finally {
+        if (!cancelled) {
+          setAuthChecking(false);
+        }
+      }
+    }
+
+    checkUser();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [router, supabase, fetchProfile, loadJobs]);
+
+  useEffect(() => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (!session?.user) {
+        setUser(null);
         return;
       }
 
-      const currentUser = sessionData.session.user;
-
-      if (cancelled) return;
-
-      setUser(currentUser);
-      await fetchProfile(currentUser.id, currentUser.email || "");
-    } catch (error) {
-      console.error("Erro ao validar sessão:", error);
-      router.replace("/login");
-      return;
-    } finally {
-      if (!cancelled) {
-        setAuthChecking(false);
-      }
-    }
-  }
-
-  checkUser();
-
-  return () => {
-    cancelled = true;
-  };
-}, [router, fetchProfile]);
-
-useEffect(() => {
-  const {
-    data: { subscription },
-  } = getSupabase().auth.onAuthStateChange(async (_event, session) => {
-    if (!session?.user) return;
-
-    setUser(session.user);
-    await fetchProfile(session.user.id, session.user.email || "");
-  });
-
-  return () => {
-    subscription.unsubscribe();
-  };
-}, [fetchProfile]);
-
-  useEffect(() => {
-    if (authChecking || !user) return;
-
-    let isMounted = true;
-
-    async function run() {
-      const result = await loadJobs();
-      if (!isMounted) return;
-      return result;
-    }
-
-    run();
+      setUser(session.user);
+      await fetchProfile(session.user.id, session.user.email || "");
+    });
 
     return () => {
-      isMounted = false;
+      subscription.unsubscribe();
     };
-  }, [authChecking, user, loadJobs]);
+  }, [supabase, fetchProfile]);
 
   useEffect(() => {
     if (!user?.id) return;
 
-    const channel = getsupabase
+    const channel = supabase
       .channel(`profile-sync-${user.id}`)
       .on(
         "postgres_changes",
@@ -298,15 +298,29 @@ useEffect(() => {
 
             if (planChanged && creditsIncreased) {
               setPaymentSyncMessage(
-                `Pagamento confirmado. Seu plano agora é ${fresh.plan === "black" ? "Black" : fresh.plan === "pro" ? "Pro" : "Free"} e seus créditos foram atualizados.`
+                `Pagamento confirmado. Seu plano agora é ${
+                  fresh.plan === "black"
+                    ? "Black"
+                    : fresh.plan === "pro"
+                      ? "Pro"
+                      : "Free"
+                } e seus créditos foram atualizados.`
               );
             } else if (planChanged) {
               setPaymentSyncMessage(
-                `Pagamento confirmado. Seu plano agora é ${fresh.plan === "black" ? "Black" : fresh.plan === "pro" ? "Pro" : "Free"}.`
+                `Pagamento confirmado. Seu plano agora é ${
+                  fresh.plan === "black"
+                    ? "Black"
+                    : fresh.plan === "pro"
+                      ? "Pro"
+                      : "Free"
+                }.`
               );
             } else if (creditsIncreased) {
               setPaymentSyncMessage(
-                `Pagamento confirmado. Seus créditos agora são ${fresh.credits.toLocaleString("pt-BR")}.`
+                `Pagamento confirmado. Seus créditos agora são ${fresh.credits.toLocaleString(
+                  "pt-BR"
+                )}.`
               );
             }
 
@@ -321,14 +335,14 @@ useEffect(() => {
       });
 
     return () => {
-      getsupabase.removeChannel(channel);
+      supabase.removeChannel(channel);
       setRealtimeConnected(false);
     };
   }, [
+    supabase,
     user,
     profile?.credits,
     profile?.plan,
-    profileLoading,
     paymentSyncing,
     normalizePlan,
     normalizeProfile,
@@ -364,7 +378,7 @@ useEffect(() => {
     if (success !== "true") return;
 
     let cancelled = false;
-    let intervalId;
+    let timeoutId;
 
     async function syncAfterCheckout() {
       setPaymentSyncing(true);
@@ -399,16 +413,16 @@ useEffect(() => {
           planFromUrl === "black"
             ? freshPlan === "black"
             : planFromUrl === "pro"
-            ? freshPlan === "pro" || freshPlan === "black"
-            : false;
+              ? freshPlan === "pro" || freshPlan === "black"
+              : false;
 
         const creditsArrived = creditsChanged && freshCredits >= initialCredits;
         const alreadyFreshPaidPlan =
           planFromUrl === "black"
             ? freshPlan === "black"
             : planFromUrl === "pro"
-            ? freshPlan === "pro" || freshPlan === "black"
-            : false;
+              ? freshPlan === "pro" || freshPlan === "black"
+              : false;
 
         const syncCompleted =
           paidPlanArrived ||
@@ -422,11 +436,19 @@ useEffect(() => {
 
           if (paidPlanArrived || alreadyFreshPaidPlan) {
             setPaymentSyncMessage(
-              `Pagamento confirmado. Seu plano já foi atualizado para ${freshPlan === "black" ? "Black" : freshPlan === "pro" ? "Pro" : "Free"}.`
+              `Pagamento confirmado. Seu plano já foi atualizado para ${
+                freshPlan === "black"
+                  ? "Black"
+                  : freshPlan === "pro"
+                    ? "Pro"
+                    : "Free"
+              }.`
             );
           } else if (creditsArrived) {
             setPaymentSyncMessage(
-              `Pagamento confirmado. Seus créditos foram atualizados para ${freshCredits.toLocaleString("pt-BR")}.`
+              `Pagamento confirmado. Seus créditos foram atualizados para ${freshCredits.toLocaleString(
+                "pt-BR"
+              )}.`
             );
           } else {
             setPaymentSyncMessage(
@@ -434,7 +456,9 @@ useEffect(() => {
             );
           }
 
-          window.history.replaceState({}, "", "/dashboard");
+          if (typeof window !== "undefined") {
+            window.history.replaceState({}, "", "/dashboard");
+          }
           return;
         }
 
@@ -445,7 +469,9 @@ useEffect(() => {
             "Seu pagamento foi processado. A dashboard buscou os dados novamente. Se algo ainda não aparecer, clique em Atualizar agora."
           );
 
-          window.history.replaceState({}, "", "/dashboard");
+          if (typeof window !== "undefined") {
+            window.history.replaceState({}, "", "/dashboard");
+          }
           return;
         }
 
@@ -453,17 +479,17 @@ useEffect(() => {
           `Sincronizando pagamento${sessionFromUrl ? " do checkout" : ""}... tentativa ${attempts} de ${maxAttempts}.`
         );
 
-        intervalId = setTimeout(trySync, 1800);
+        timeoutId = setTimeout(trySync, 1800);
       }
 
-      trySync();
+      await trySync();
     }
 
     syncAfterCheckout();
 
     return () => {
       cancelled = true;
-      if (intervalId) clearTimeout(intervalId);
+      if (timeoutId) clearTimeout(timeoutId);
     };
   }, [
     user,
@@ -477,18 +503,20 @@ useEffect(() => {
 
   async function handleLogout() {
     try {
-      await getsupabase.auth.signOut();
-    } catch (e) {
-      console.error(e);
+      await supabase.auth.signOut();
+    } catch (error) {
+      console.error(error);
     } finally {
-      sessionStorage.removeItem("lastCompletedJobId");
-      sessionStorage.removeItem("lastCompletedJob");
+      if (typeof window !== "undefined") {
+        sessionStorage.removeItem("lastCompletedJobId");
+        sessionStorage.removeItem("lastCompletedJob");
+      }
       router.replace("/login");
     }
   }
 
   function openResults(job) {
-    if (!job?.id) return;
+    if (!job?.id || typeof window === "undefined") return;
     sessionStorage.setItem("lastCompletedJobId", String(job.id));
     sessionStorage.removeItem("lastCompletedJob");
     router.push("/results");
@@ -509,11 +537,10 @@ useEffect(() => {
   function formatDate(dateString) {
     if (!dateString) return "-";
 
-    try {
-      return new Date(dateString).toLocaleString("pt-BR");
-    } catch {
-      return dateString;
-    }
+    const date = new Date(dateString);
+    if (Number.isNaN(date.getTime())) return "-";
+
+    return date.toLocaleString("pt-BR");
   }
 
   function getStatusLabel(status) {
@@ -617,8 +644,8 @@ useEffect(() => {
       (job) => job.status === "completed" || job.status === "completed_with_errors"
     ).length;
     const failedJobs = jobs.filter((job) => job.status === "failed").length;
-    const totalPhotos = jobs.reduce((acc, job) => acc + (job.totalPhotos || 0), 0);
-    const totalDonePhotos = jobs.reduce((acc, job) => acc + (job.donePhotos || 0), 0);
+    const totalPhotos = jobs.reduce((acc, job) => acc + Number(job.totalPhotos || 0), 0);
+    const totalDonePhotos = jobs.reduce((acc, job) => acc + Number(job.donePhotos || 0), 0);
 
     return {
       totalJobs,
@@ -632,7 +659,7 @@ useEffect(() => {
 
   const filteredJobs = useMemo(() => {
     return jobs.filter((job) => {
-      const projectName = job.projectName || "";
+      const projectName = String(job.projectName || "");
       const matchesSearch =
         !searchTerm || projectName.toLowerCase().includes(searchTerm.toLowerCase());
 
@@ -732,7 +759,7 @@ useEffect(() => {
               className="group relative inline-flex items-center gap-2 overflow-hidden rounded-full px-5 py-2.5 text-sm font-semibold text-slate-950 shadow-[0_0_35px_rgba(99,102,241,0.22)] transition duration-200 hover:scale-[1.02]"
             >
               <span className="absolute inset-0 bg-gradient-to-r from-cyan-400 via-violet-500 to-fuchsia-500" />
-              <span className="absolute inset-0 opacity-0 blur-xl transition duration-300 group-hover:opacity-50 bg-gradient-to-r from-cyan-400 via-violet-500 to-fuchsia-500" />
+              <span className="absolute inset-0 bg-gradient-to-r from-cyan-400 via-violet-500 to-fuchsia-500 opacity-0 blur-xl transition duration-300 group-hover:opacity-50" />
               <span className="relative z-10 inline-flex items-center gap-2">
                 <LogOut size={16} />
                 Sair
@@ -770,7 +797,7 @@ useEffect(() => {
                 </div>
 
                 <div>
-                  <div className="text-sm font-semibold tracking-[0.18em] uppercase">
+                  <div className="text-sm font-semibold uppercase tracking-[0.18em]">
                     {paymentSyncing ? "Sincronizando pagamento" : "Dashboard atualizada"}
                   </div>
                   <div className="mt-1 text-sm text-white/80">{paymentSyncMessage}</div>
@@ -816,7 +843,7 @@ useEffect(() => {
               <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
                 <div>
                   <div className="text-sm text-white/42">Conta conectada</div>
-                  <div className="mt-2 text-lg font-semibold text-white break-all">
+                  <div className="mt-2 break-all text-lg font-semibold text-white">
                     {displayEmail}
                   </div>
                 </div>
@@ -836,7 +863,13 @@ useEffect(() => {
                     )}
                   </div>
 
-                  <div className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs ${realtimeConnected ? "border-emerald-400/25 bg-emerald-400/10 text-emerald-200" : "border-amber-400/25 bg-amber-400/10 text-amber-200"}`}>
+                  <div
+                    className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs ${
+                      realtimeConnected
+                        ? "border-emerald-400/25 bg-emerald-400/10 text-emerald-200"
+                        : "border-amber-400/25 bg-amber-400/10 text-amber-200"
+                    }`}
+                  >
                     <Wifi size={13} />
                     {realtimeConnected ? "Tempo real ativo" : "Tempo real aguardando"}
                   </div>
@@ -870,7 +903,7 @@ useEffect(() => {
                 className="group relative inline-flex items-center justify-center overflow-hidden rounded-2xl px-7 py-4 text-base font-semibold text-slate-950 shadow-[0_0_45px_rgba(99,102,241,0.28)] transition duration-200 hover:scale-[1.02]"
               >
                 <span className="absolute inset-0 bg-gradient-to-r from-cyan-400 via-violet-500 to-fuchsia-500" />
-                <span className="absolute inset-0 opacity-0 blur-xl transition duration-300 group-hover:opacity-60 bg-gradient-to-r from-cyan-400 via-violet-500 to-fuchsia-500" />
+                <span className="absolute inset-0 bg-gradient-to-r from-cyan-400 via-violet-500 to-fuchsia-500 opacity-0 blur-xl transition duration-300 group-hover:opacity-60" />
                 <span className="relative z-10 inline-flex items-center gap-2">
                   <Zap size={18} />
                   Criar novo projeto
@@ -905,7 +938,11 @@ useEffect(() => {
                 </div>
 
                 <div className="rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1.5 text-xs font-medium text-cyan-200">
-                  {profileLoading ? "Sincronizando" : realtimeConnected ? "Tempo real" : "Atualizado"}
+                  {profileLoading
+                    ? "Sincronizando"
+                    : realtimeConnected
+                      ? "Tempo real"
+                      : "Atualizado"}
                 </div>
               </div>
 
@@ -1071,8 +1108,7 @@ useEffect(() => {
               </div>
 
               <div className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white/65">
-                {filteredJobs.length} resultado
-                {filteredJobs.length !== 1 ? "s" : ""}
+                {filteredJobs.length} resultado{filteredJobs.length !== 1 ? "s" : ""}
               </div>
             </div>
 
@@ -1154,7 +1190,7 @@ useEffect(() => {
                         </div>
                         <div className="mt-1 text-sm text-white/45">
                           {(job.totalPhotos || 0).toLocaleString("pt-BR")} foto
-                          {(job.totalPhotos || 0) !== 1 ? "s" : ""} • criado em {" "}
+                          {(job.totalPhotos || 0) !== 1 ? "s" : ""} • criado em{" "}
                           {formatDate(job.createdAt)}
                         </div>
                       </div>
@@ -1252,7 +1288,7 @@ useEffect(() => {
                   className="group relative inline-flex items-center justify-center overflow-hidden rounded-2xl px-5 py-3 font-semibold text-slate-950 shadow-[0_0_30px_rgba(34,211,238,0.18)] transition duration-200 hover:scale-[1.01]"
                 >
                   <span className="absolute inset-0 bg-gradient-to-r from-cyan-400 via-violet-500 to-fuchsia-500" />
-                  <span className="absolute inset-0 opacity-0 blur-xl transition duration-300 group-hover:opacity-50 bg-gradient-to-r from-cyan-400 via-violet-500 to-fuchsia-500" />
+                  <span className="absolute inset-0 bg-gradient-to-r from-cyan-400 via-violet-500 to-fuchsia-500 opacity-0 blur-xl transition duration-300 group-hover:opacity-50" />
                   <span className="relative z-10 inline-flex items-center gap-2">
                     <Zap size={16} />
                     Novo projeto

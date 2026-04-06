@@ -4,12 +4,18 @@ import { createClient } from "@supabase/supabase-js";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+let stripeInstance = null;
+let supabaseAdminInstance = null;
+
 function getStripe() {
+  if (stripeInstance) return stripeInstance;
+
   if (!process.env.STRIPE_SECRET_KEY) {
     throw new Error("STRIPE_SECRET_KEY não configurada.");
   }
 
-  return new Stripe(process.env.STRIPE_SECRET_KEY);
+  stripeInstance = new Stripe(process.env.STRIPE_SECRET_KEY);
+  return stripeInstance;
 }
 
 function getWebhookSecret() {
@@ -21,6 +27,8 @@ function getWebhookSecret() {
 }
 
 function getSupabaseAdmin() {
+  if (supabaseAdminInstance) return supabaseAdminInstance;
+
   const supabaseUrl =
     process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
 
@@ -34,11 +42,23 @@ function getSupabaseAdmin() {
     throw new Error("SUPABASE_SERVICE_ROLE_KEY não configurada.");
   }
 
-  return createClient(supabaseUrl, supabaseServiceRoleKey);
+  supabaseAdminInstance = createClient(supabaseUrl, supabaseServiceRoleKey);
+  return supabaseAdminInstance;
+}
+
+function normalizePlan(plan) {
+  if (!plan) return "free";
+
+  const safePlan = String(plan).toLowerCase().trim();
+
+  if (safePlan === "black") return "black";
+  if (safePlan === "pro" || safePlan === "profissional") return "pro";
+
+  return "free";
 }
 
 /**
- * Garante que o perfil exista.
+ * Garante que o profile exista.
  */
 async function ensureProfile(userId, email = null) {
   const supabaseAdmin = getSupabaseAdmin();
@@ -52,7 +72,9 @@ async function ensureProfile(userId, email = null) {
     payload.email = email;
   }
 
-  const { error } = await supabaseAdmin.from("profiles").upsert(payload);
+  const { error } = await supabaseAdmin
+    .from("profiles")
+    .upsert(payload, { onConflict: "id" });
 
   if (error) {
     throw new Error(`Erro ao garantir profile: ${error.message}`);
@@ -71,7 +93,7 @@ async function updateUserPlan({
   const supabaseAdmin = getSupabaseAdmin();
 
   const payload = {
-    plan,
+    plan: normalizePlan(plan),
     updated_at: new Date().toISOString(),
   };
 
@@ -139,7 +161,7 @@ async function getProfileBySubscriptionId(subscriptionId) {
 
 /**
  * Compra avulsa de créditos.
- * Requer a função RPC já existente no seu banco.
+ * Requer a função RPC add_credits_after_purchase já existente no banco.
  */
 async function addCredits({
   userId,
@@ -171,16 +193,13 @@ async function addCredits({
  * Se não houver, tenta pelo price id.
  */
 function getPlanFromSession(session) {
-  const metadataPlan = session?.metadata?.plan;
+  const metadataPlan = normalizePlan(session?.metadata?.plan);
 
   if (metadataPlan === "pro" || metadataPlan === "black") {
     return metadataPlan;
   }
 
-  const lineItemPriceId =
-    session?.line_items?.data?.[0]?.price?.id ||
-    session?.display_items?.[0]?.price?.id ||
-    null;
+  const lineItemPriceId = session?.line_items?.data?.[0]?.price?.id || null;
 
   if (
     lineItemPriceId &&
@@ -213,23 +232,62 @@ function resolvePlanFromSubscription(subscription) {
     subscription?.items?.data?.[0]?.price?.id || null;
 
   if (
+    subscriptionPriceId &&
     subscriptionPriceId === process.env.NEXT_PUBLIC_STRIPE_BLACK_PRICE_ID
   ) {
     return "black";
   }
 
   if (
+    subscriptionPriceId &&
     subscriptionPriceId === process.env.NEXT_PUBLIC_STRIPE_PRO_PRICE_ID
   ) {
     return "pro";
   }
 
-  const metadataPlan = subscription?.metadata?.plan;
+  const metadataPlan = normalizePlan(subscription?.metadata?.plan);
 
   if (metadataPlan === "black") return "black";
   if (metadataPlan === "pro") return "pro";
 
   return "free";
+}
+
+/**
+ * Busca sessão completa com line_items.
+ */
+async function getExpandedCheckoutSession(sessionId) {
+  const stripe = getStripe();
+
+  return await stripe.checkout.sessions.retrieve(sessionId, {
+    expand: ["line_items", "subscription"],
+  });
+}
+
+/**
+ * Resolve userId da sessão com fallback por customer/subscription.
+ */
+async function resolveUserIdFromSession(session) {
+  const metadataUserId = session?.metadata?.user_id || null;
+  if (metadataUserId) return metadataUserId;
+
+  const customerId =
+    typeof session?.customer === "string"
+      ? session.customer
+      : session?.customer?.id || null;
+
+  const subscriptionId =
+    typeof session?.subscription === "string"
+      ? session.subscription
+      : session?.subscription?.id || null;
+
+  const profileBySubscription = await getProfileBySubscriptionId(subscriptionId);
+  if (profileBySubscription?.id) return profileBySubscription.id;
+
+  const profileByCustomer = await getProfileByCustomerId(customerId);
+  if (profileByCustomer?.id) return profileByCustomer.id;
+
+  return null;
 }
 
 export async function POST(request) {
@@ -249,8 +307,8 @@ export async function POST(request) {
 
     event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
   } catch (error) {
-    console.error("Erro ao validar assinatura do webhook:", error.message);
-    return new Response(`Webhook Error: ${error.message}`, { status: 400 });
+    console.error("Erro ao validar assinatura do webhook:", error?.message);
+    return new Response(`Webhook Error: ${error?.message}`, { status: 400 });
   }
 
   try {
@@ -262,14 +320,11 @@ export async function POST(request) {
         let session = event.data.object;
 
         if (session?.id) {
-          session = await stripe.checkout.sessions.retrieve(session.id, {
-            expand: ["line_items", "subscription"],
-          });
+          session = await getExpandedCheckoutSession(session.id);
         }
 
         const plan = getPlanFromSession(session);
         const credits = Number(session?.metadata?.credits || 0);
-        const userId = session?.metadata?.user_id || null;
 
         const customerEmail =
           session?.customer_details?.email ||
@@ -277,25 +332,27 @@ export async function POST(request) {
           null;
 
         const customerId =
-          typeof session.customer === "string"
+          typeof session?.customer === "string"
             ? session.customer
-            : session.customer?.id || null;
+            : session?.customer?.id || null;
 
         const subscriptionId =
-          typeof session.subscription === "string"
+          typeof session?.subscription === "string"
             ? session.subscription
-            : session.subscription?.id || null;
+            : session?.subscription?.id || null;
 
         const paymentIntentId =
-          typeof session.payment_intent === "string"
+          typeof session?.payment_intent === "string"
             ? session.payment_intent
-            : session.payment_intent?.id || null;
+            : session?.payment_intent?.id || null;
+
+        const userId = await resolveUserIdFromSession(session);
 
         console.log("CHECKOUT CONCLUÍDO:", {
           eventId: event.id,
-          sessionId: session.id,
-          mode: session.mode,
-          paymentStatus: session.payment_status,
+          sessionId: session?.id,
+          mode: session?.mode,
+          paymentStatus: session?.payment_status,
           plan,
           credits,
           userId,
@@ -306,16 +363,18 @@ export async function POST(request) {
         });
 
         if (!userId) {
-          console.error("user_id ausente no metadata.", {
+          console.error("user_id ausente e não foi possível resolver o usuário.", {
             eventId: event.id,
-            sessionId: session.id,
+            sessionId: session?.id,
+            customerId,
+            subscriptionId,
           });
           return new Response("user_id ausente no metadata", { status: 400 });
         }
 
         await ensureProfile(userId, customerEmail);
 
-        if (session.mode === "payment" && credits > 0) {
+        if (session?.mode === "payment" && credits > 0) {
           await addCredits({
             userId,
             credits,
@@ -325,6 +384,14 @@ export async function POST(request) {
             stripePaymentIntentId: paymentIntentId,
           });
 
+          if (customerId) {
+            await updateUserPlan({
+              userId,
+              plan: "free",
+              customerId,
+            });
+          }
+
           console.log("CRÉDITOS ADICIONADOS:", {
             userId,
             credits,
@@ -333,7 +400,7 @@ export async function POST(request) {
         }
 
         if (
-          session.mode === "subscription" &&
+          session?.mode === "subscription" &&
           (plan === "pro" || plan === "black")
         ) {
           await updateUserPlan({
@@ -358,16 +425,16 @@ export async function POST(request) {
       case "customer.subscription.created": {
         const subscription = event.data.object;
 
-        const subscriptionId = subscription.id;
+        const subscriptionId = subscription?.id || null;
 
         const customerId =
-          typeof subscription.customer === "string"
+          typeof subscription?.customer === "string"
             ? subscription.customer
-            : subscription.customer?.id || null;
+            : subscription?.customer?.id || null;
 
-        const status = subscription.status;
+        const status = subscription?.status || "unknown";
 
-        let profile =
+        const profile =
           (await getProfileBySubscriptionId(subscriptionId)) ||
           (await getProfileByCustomerId(customerId));
 
@@ -404,14 +471,14 @@ export async function POST(request) {
       case "customer.subscription.deleted": {
         const subscription = event.data.object;
 
-        const subscriptionId = subscription.id;
+        const subscriptionId = subscription?.id || null;
 
         const customerId =
-          typeof subscription.customer === "string"
+          typeof subscription?.customer === "string"
             ? subscription.customer
-            : subscription.customer?.id || null;
+            : subscription?.customer?.id || null;
 
-        let profile =
+        const profile =
           (await getProfileBySubscriptionId(subscriptionId)) ||
           (await getProfileByCustomerId(customerId));
 

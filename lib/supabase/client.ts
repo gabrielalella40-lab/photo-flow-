@@ -14,7 +14,13 @@ function createBrowserSupabaseClient(): SupabaseClient {
     throw new Error("NEXT_PUBLIC_SUPABASE_ANON_KEY não configurada.");
   }
 
-  return createClient(supabaseUrl, supabaseAnonKey);
+  return createClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+    },
+  });
 }
 
 export function getSupabaseClient(): SupabaseClient {
@@ -30,12 +36,13 @@ export function getSupabaseClient(): SupabaseClient {
 }
 
 export const supabase = new Proxy({} as SupabaseClient, {
-  get(_target, prop) {
+  get(_target, prop: keyof SupabaseClient) {
     const client = getSupabaseClient();
-    const value = (client as any)[prop];
+
+    const value = client[prop];
 
     if (typeof value === "function") {
-      return value.bind(client);
+      return (value as Function).bind(client);
     }
 
     return value;

@@ -33,7 +33,7 @@ export default function PricingPage() {
         badge: "Mais escolhido",
         accent: "from-cyan-400/25 via-violet-500/20 to-fuchsia-500/20",
         buttonClass:
-  "bg-gradient-to-r from-cyan-400 via-violet-500 to-fuchsia-500 text-slate-950 hover:scale-[1.02]",
+          "bg-gradient-to-r from-cyan-400 via-violet-500 to-fuchsia-500 text-slate-950 hover:scale-[1.02]",
         limit: "Até 400 fotos por mês",
         model: "IA intermediária",
         idealFor:
@@ -119,37 +119,42 @@ export default function PricingPage() {
       setError("");
       setLoadingPlan(planId);
 
-    const {
-  data: { session },
-  error: authError,
-} = await supabase.auth.getSession();
+      const {
+        data: { session },
+        error: authError,
+      } = await supabase.auth.getSession();
 
-const user = session?.user;
+      if (authError) {
+        setError("Não foi possível validar seu login agora.");
+        return;
+      }
 
-console.log("USUARIO DO CHECKOUT:", user);
+      const user = session?.user;
 
-if (authError) {
-  setError("Não foi possível validar seu login agora.");
-  return;
-}
+      if (!user?.id) {
+        window.location.href = "/login";
+        return;
+      }
 
-if (!user?.id) {
-  window.location.href = "/login";
-  return;
-}
+      const response = await fetch("/api/checkout", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          plan: planId,
+          userId: user.id,
+          userEmail: user.email || "",
+        }),
+      });
 
-const response = await fetch("/api/checkout", {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-  },
-  body: JSON.stringify({
-    plan: planId,
-    userId: user.id,
-    userEmail: user.email,
-  }),
-});
-      const data = await response.json();
+      let data = null;
+
+      try {
+        data = await response.json();
+      } catch {
+        data = null;
+      }
 
       if (!response.ok) {
         setError(data?.error || "Não foi possível iniciar o checkout.");
@@ -163,7 +168,7 @@ const response = await fetch("/api/checkout", {
 
       setError("O checkout não retornou uma URL válida.");
     } catch (err) {
-      console.error(err);
+      console.error("Erro ao iniciar checkout:", err);
       setError("Erro ao iniciar pagamento.");
     } finally {
       setLoadingPlan(null);
@@ -308,7 +313,7 @@ const response = await fetch("/api/checkout", {
                       <h2 className="mt-3 text-3xl font-semibold tracking-[-0.05em] text-white md:text-4xl">
                         {plan.title}
                       </h2>
-                      <p className="mt-3 max-w-xl text-white/60 leading-7">
+                      <p className="mt-3 max-w-xl leading-7 text-white/60">
                         {plan.subtitle}
                       </p>
                     </div>
@@ -429,7 +434,7 @@ const response = await fetch("/api/checkout", {
                     {bundle.price}
                   </div>
 
-                  <p className="mt-5 text-white/60 leading-7">
+                  <p className="mt-5 leading-7 text-white/60">
                     {bundle.description}
                   </p>
 
@@ -513,7 +518,7 @@ const response = await fetch("/api/checkout", {
                           <div className="text-lg font-medium text-white">
                             {item.title}
                           </div>
-                          <div className="mt-1 text-white/58 leading-7">
+                          <div className="mt-1 leading-7 text-white/58">
                             {item.text}
                           </div>
                         </div>

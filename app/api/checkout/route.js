@@ -1,7 +1,6 @@
 import Stripe from "stripe";
 
 export const runtime = "nodejs";
-
 export const dynamic = "force-dynamic";
 
 export async function GET() {
@@ -23,10 +22,10 @@ export async function POST(request) {
       origin ||
       "http://localhost:3000";
 
-      console.log("CHECKOUT BASE URL:", baseUrl);
-console.log("CHECKOUT ORIGIN:", origin);
-console.log("CHECKOUT APP URL ENV:", process.env.NEXT_PUBLIC_APP_URL);
-console.log("CHECKOUT PLAN:", plan);
+    console.log("CHECKOUT BASE URL:", baseUrl);
+    console.log("CHECKOUT ORIGIN:", origin);
+    console.log("CHECKOUT APP URL ENV:", process.env.NEXT_PUBLIC_APP_URL);
+    console.log("CHECKOUT PLAN:", plan);
 
     let priceId;
     let mode;
@@ -69,14 +68,14 @@ console.log("CHECKOUT PLAN:", plan);
       );
     }
 
-    if (mode === "payment" && !userId) {
+    if (!userId) {
       return Response.json(
-        { error: "userId é obrigatório para compra de créditos." },
+        { error: "userId é obrigatório para checkout." },
         { status: 400 }
       );
     }
 
-    const session = await stripe.checkout.sessions.create({
+    const sessionConfig = {
       mode,
       line_items: [
         {
@@ -88,12 +87,25 @@ console.log("CHECKOUT PLAN:", plan);
         plan: String(plan || ""),
         credits: String(credits || 0),
         user_id: String(userId || ""),
+        user_email: String(userEmail || ""),
       },
       customer_email: userEmail || undefined,
-success_url: `${baseUrl}/success?success=true&plan=${plan}`,
-cancel_url: `${baseUrl}/pricing?checkout=cancelled&plan=${plan}`,
+      success_url: `${baseUrl}/dashboard?success=true&plan=${plan}&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${baseUrl}/pricing?checkout=cancelled&plan=${plan}`,
       allow_promotion_codes: true,
-    });
+    };
+
+    if (mode === "subscription") {
+      sessionConfig.subscription_data = {
+        metadata: {
+          user_id: String(userId || ""),
+          plan: String(plan || ""),
+          user_email: String(userEmail || ""),
+        },
+      };
+    }
+
+    const session = await stripe.checkout.sessions.create(sessionConfig);
 
     return Response.json({ url: session.url });
   } catch (error) {

@@ -29,7 +29,6 @@ if (!supabaseServiceRoleKey) {
 }
 
 const stripe = new Stripe(stripeSecretKey);
-
 const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey);
 
 /**
@@ -185,17 +184,38 @@ function getPlanFromSession(session) {
 }
 
 /**
- * Mapeia status da assinatura para o plano do usuário.
+ * Descobre o plano real a partir da assinatura da Stripe.
+ * Aqui não usamos o plano atual salvo no banco como verdade.
  */
-function resolvePlanFromSubscription(subscription, currentPlan = "free") {
+function resolvePlanFromSubscription(subscription) {
   const status = subscription?.status;
 
-  // active e trialing devem manter acesso ao plano pago
-  if (status === "active" || status === "trialing") {
-    return currentPlan === "black" ? "black" : currentPlan === "pro" ? "pro" : "free";
+  // só mantém plano pago se a assinatura estiver válida
+  if (status !== "active" && status !== "trialing") {
+    return "free";
   }
 
-  // incomplete, incomplete_expired, past_due, unpaid, canceled
+  const subscriptionPriceId =
+    subscription?.items?.data?.[0]?.price?.id || null;
+
+  if (
+    subscriptionPriceId === process.env.NEXT_PUBLIC_STRIPE_BLACK_PRICE_ID
+  ) {
+    return "black";
+  }
+
+  if (
+    subscriptionPriceId === process.env.NEXT_PUBLIC_STRIPE_PRO_PRICE_ID
+  ) {
+    return "pro";
+  }
+
+  // fallback via metadata da assinatura
+  const metadataPlan = subscription?.metadata?.plan;
+
+  if (metadataPlan === "black") return "black";
+  if (metadataPlan === "pro") return "pro";
+
   return "free";
 }
 
@@ -228,7 +248,6 @@ export async function POST(request) {
       case "checkout.session.async_payment_succeeded": {
         let session = event.data.object;
 
-        // Expand para pegar line_items se precisar
         if (session?.id) {
           session = await stripe.checkout.sessions.retrieve(session.id, {
             expand: ["line_items", "subscription"],
@@ -302,7 +321,10 @@ export async function POST(request) {
         }
 
         // ASSINATURA DE PLANO
-        if (session.mode === "subscription" && (plan === "pro" || plan === "black")) {
+        if (
+          session.mode === "subscription" &&
+          (plan === "pro" || plan === "black")
+        ) {
           await updateUserPlan({
             userId,
             plan,
@@ -351,12 +373,7 @@ export async function POST(request) {
           break;
         }
 
-        const currentPlan =
-          profile.plan === "black" || profile.plan === "pro"
-            ? profile.plan
-            : "free";
-
-        const newPlan = resolvePlanFromSubscription(subscription, currentPlan);
+        const newPlan = resolvePlanFromSubscription(subscription);
 
         await updateUserPlan({
           userId: profile.id,

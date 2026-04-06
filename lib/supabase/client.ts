@@ -2,7 +2,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 let browserClient: SupabaseClient | null = null;
 
-function createBrowserClient(): SupabaseClient {
+function createBrowserSupabaseClient(): SupabaseClient {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
@@ -17,23 +17,27 @@ function createBrowserClient(): SupabaseClient {
   return createClient(supabaseUrl, supabaseAnonKey);
 }
 
-/**
- * 🔥 NOVO (seguro para Next.js)
- */
 export function getSupabaseClient(): SupabaseClient {
   if (typeof window === "undefined") {
-    throw new Error("Supabase client só pode rodar no browser.");
+    throw new Error("Supabase client só pode ser usado no navegador.");
   }
 
   if (!browserClient) {
-    browserClient = createBrowserClient();
+    browserClient = createBrowserSupabaseClient();
   }
 
   return browserClient;
 }
 
-/**
- * 🔥 LEGADO (compatibilidade com seu projeto inteiro)
- */
-export const supabase =
-  typeof window !== "undefined" ? createBrowserClient() : ({} as SupabaseClient);
+export const supabase = new Proxy({} as SupabaseClient, {
+  get(_target, prop) {
+    const client = getSupabaseClient();
+    const value = (client as any)[prop];
+
+    if (typeof value === "function") {
+      return value.bind(client);
+    }
+
+    return value;
+  },
+});

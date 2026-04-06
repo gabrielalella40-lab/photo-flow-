@@ -16,40 +16,49 @@ export default function LoginPage() {
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
 
-  async function handleLogin(e) {
-    e.preventDefault();
-    setErrorMessage("");
-    setSuccessMessage("");
+async function handleLogin(e) {
+  e.preventDefault();
+  setErrorMessage("");
+  setSuccessMessage("");
 
-    if (!email || !password) {
-      setErrorMessage("Preencha seu e-mail e sua senha para continuar.");
+  if (!email || !password) {
+    setErrorMessage("Preencha seu e-mail e sua senha para continuar.");
+    return;
+  }
+
+  try {
+    setLoading(true);
+
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (error) {
+      setErrorMessage(
+        "Não foi possível entrar. Confira seu e-mail, sua senha ou confirme sua conta no e-mail."
+      );
       return;
     }
 
-    try {
-      setLoading(true);
-
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
-      if (error) {
-        setErrorMessage(
-          "Não foi possível entrar. Confira seu e-mail, sua senha ou confirme sua conta no e-mail."
-        );
-        return;
-      }
-
-      setSuccessMessage("Login realizado com sucesso.");
-      router.push("/dashboard");
-    } catch (err) {
-      setErrorMessage("Erro ao entrar na sua conta.");
-    } finally {
-      setLoading(false);
+    if (!data?.session) {
+      setErrorMessage("Erro ao criar sessão.");
+      return;
     }
-  }
 
+    // 🔥 AGUARDA A SESSÃO SER SALVA
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    setSuccessMessage("Login realizado com sucesso.");
+
+    // 🔥 MELHOR QUE push
+    router.replace("/dashboard");
+  } catch (err) {
+    setErrorMessage("Erro ao entrar na sua conta.");
+  } finally {
+    setLoading(false);
+  }
+}
   async function handleForgotPassword() {
     setErrorMessage("");
     setSuccessMessage("");

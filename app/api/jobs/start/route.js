@@ -5,14 +5,31 @@ import crypto from "crypto";
 import OpenAI from "openai";
 import { createClient } from "@supabase/supabase-js";
 
-const client = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+function getOpenAI() {
+  if (!process.env.OPENAI_API_KEY) {
+    throw new Error("OPENAI_API_KEY não encontrada no ambiente.");
+  }
+
+  return new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
+  });
+}
+
+function getSupabase() {
+  const url =
+    process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
+
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!url || !key) {
+    throw new Error("Supabase envs não configuradas.");
+  }
+
+  return createClient(url, key);
+}
 
 const DATA_DIR = path.join(process.cwd(), "data");
 const UPLOADS_DIR = path.join(DATA_DIR, "uploads");
@@ -41,6 +58,8 @@ async function getAuthenticatedUser(request) {
       return { user: null, error: "Token inválido." };
     }
 
+    const supabase = getSupabase();
+
     const {
       data: { user },
       error,
@@ -60,6 +79,8 @@ async function getAuthenticatedUser(request) {
 }
 
 async function saveJob(job) {
+  const supabase = getSupabase();
+
   const payload = {
     id: job.id,
     user_id: job.userId,
@@ -82,6 +103,8 @@ async function saveJob(job) {
 }
 
 async function readJob(jobId) {
+  const supabase = getSupabase();
+
   const { data, error } = await supabase
     .from("jobs")
     .select("*")
@@ -141,6 +164,7 @@ async function updateJob(jobId, patch) {
 
 async function processJob(jobId) {
   try {
+    const client = getOpenAI();
     const job = await readJob(jobId);
 
     await updateJob(jobId, {
@@ -235,11 +259,18 @@ export async function POST(req) {
     }
 
     if (
-      !process.env.NEXT_PUBLIC_SUPABASE_URL ||
-      !process.env.SUPABASE_SERVICE_ROLE_KEY
+      !process.env.NEXT_PUBLIC_SUPABASE_URL &&
+      !process.env.SUPABASE_URL
     ) {
       return NextResponse.json(
-        { error: "Variáveis do Supabase não encontradas no .env.local" },
+        { error: "URL do Supabase não encontrada no ambiente." },
+        { status: 500 }
+      );
+    }
+
+    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      return NextResponse.json(
+        { error: "SUPABASE_SERVICE_ROLE_KEY não encontrada no ambiente." },
         { status: 500 }
       );
     }
@@ -252,6 +283,8 @@ export async function POST(req) {
         { status: 401 }
       );
     }
+
+    const supabase = getSupabase();
 
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
@@ -354,12 +387,22 @@ export async function POST(req) {
 
     await saveJob(job);
 
-    await supabase
+    const { error: creditsUpdateError } = await supabase
       .from("profiles")
       .update({
         credits: profile.credits - totalPhotos,
       })
       .eq("id", user.id);
+
+    if (creditsUpdateError) {
+      return NextResponse.json(
+        {
+          error: "Falha ao debitar créditos do usuário.",
+          details: creditsUpdateError.message,
+        },
+        { status: 500 }
+      );
+    }
 
     processJob(jobId);
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { getSupabaseClient } from "../../lib/getsupabase/client";
+import { getSupabaseClient } from "../../lib/supabase/client";
 import { useEffect, useMemo, useState, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";

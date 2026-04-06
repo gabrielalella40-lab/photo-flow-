@@ -1,6 +1,6 @@
 "use client";
 
-import { supabase } from "../../lib/supabase/client";
+import { getSupabaseClient } from "../../lib/supabase/client";
 import { useEffect, useMemo, useState, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -33,7 +33,7 @@ import {
 
 export default function DashboardPage() {
   const router = useRouter();
-
+  const supabase = typeof window !== "undefined" ? getSupabaseClient() : null;
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [authChecking, setAuthChecking] = useState(true);

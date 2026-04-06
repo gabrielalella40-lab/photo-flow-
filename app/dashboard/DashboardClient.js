@@ -1,6 +1,6 @@
 "use client";
 
-import { getSupabaseClient } from "../../lib/supabase/client";
+import { getSupabaseClient } from "../../lib/getsupabase/client";
 import { useEffect, useMemo, useState, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -33,7 +33,7 @@ import {
 
 export default function DashboardPage() {
   const router = useRouter();
-  const supabase = typeof window !== "undefined" ? getSupabaseClient() : null;
+  const getSupabase = () => getSupabaseClient();
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [authChecking, setAuthChecking] = useState(true);
@@ -198,39 +198,57 @@ export default function DashboardPage() {
     [user, fetchProfile, loadJobs]
   );
 
-  useEffect(() => {
-    let cancelled = false;
+useEffect(() => {
+  let cancelled = false;
 
-    async function checkUser() {
-      try {
-        const { data, error } = await getsupabase.auth.getUser();
+  async function checkUser() {
+    try {
+      const { data: sessionData, error: sessionError } =
+        await getSupabase().auth.getSession();
 
-        if (error || !data?.user) {
-          router.replace("/login");
-          return;
-        }
-
-        if (cancelled) return;
-
-        setUser(data.user);
-        await fetchProfile(data.user.id, data.user.email || "");
-      } catch (error) {
-        console.error("Erro ao validar sessão:", error);
+      if (sessionError || !sessionData?.session?.user) {
         router.replace("/login");
         return;
-      } finally {
-        if (!cancelled) {
-          setAuthChecking(false);
-        }
+      }
+
+      const currentUser = sessionData.session.user;
+
+      if (cancelled) return;
+
+      setUser(currentUser);
+      await fetchProfile(currentUser.id, currentUser.email || "");
+    } catch (error) {
+      console.error("Erro ao validar sessão:", error);
+      router.replace("/login");
+      return;
+    } finally {
+      if (!cancelled) {
+        setAuthChecking(false);
       }
     }
+  }
 
-    checkUser();
+  checkUser();
 
-    return () => {
-      cancelled = true;
-    };
-  }, [router, fetchProfile]);
+  return () => {
+    cancelled = true;
+  };
+}, [router, fetchProfile]);
+
+useEffect(() => {
+  const {
+    data: { subscription },
+  } = getSupabase().auth.onAuthStateChange(async (_event, session) => {
+    if (!session?.user) return;
+
+    setUser(session.user);
+    await fetchProfile(session.user.id, session.user.email || "");
+  });
+
+  return () => {
+    subscription.unsubscribe();
+  };
+}, [fetchProfile]);
 
   useEffect(() => {
     if (authChecking || !user) return;
@@ -253,7 +271,7 @@ export default function DashboardPage() {
   useEffect(() => {
     if (!user?.id) return;
 
-    const channel = supabase
+    const channel = getsupabase
       .channel(`profile-sync-${user.id}`)
       .on(
         "postgres_changes",
@@ -303,7 +321,7 @@ export default function DashboardPage() {
       });
 
     return () => {
-      supabase.removeChannel(channel);
+      getsupabase.removeChannel(channel);
       setRealtimeConnected(false);
     };
   }, [

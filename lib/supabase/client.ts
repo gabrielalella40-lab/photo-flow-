@@ -1,17 +1,26 @@
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+let browserClient: SupabaseClient | null = null;
 
-declare global {
-  // eslint-disable-next-line no-var
-  var __supabase__: ReturnType<typeof createClient> | undefined;
-}
+export function getSupabaseClient(): SupabaseClient {
+  if (typeof window === "undefined") {
+    throw new Error("Supabase browser client só pode ser usado no navegador.");
+  }
 
-export const supabase =
-  globalThis.__supabase__ ??
-  createClient(supabaseUrl, supabaseAnonKey);
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-if (typeof window !== "undefined") {
-  globalThis.__supabase__ = supabase;
+  if (!supabaseUrl) {
+    throw new Error("NEXT_PUBLIC_SUPABASE_URL não configurada.");
+  }
+
+  if (!supabaseAnonKey) {
+    throw new Error("NEXT_PUBLIC_SUPABASE_ANON_KEY não configurada.");
+  }
+
+  if (!browserClient) {
+    browserClient = createClient(supabaseUrl, supabaseAnonKey);
+  }
+
+  return browserClient;
 }

@@ -99,7 +99,7 @@ export default function DashboardPage() {
       setProfileLoading(true);
 
       try {
-        const { data: profileData, error: profileError } = await supabase
+        const { data: profileData, error: profileError } = await getsupabase
           .from("profiles")
           .select("credits, plan, email")
           .eq("id", userId)
@@ -203,7 +203,7 @@ export default function DashboardPage() {
 
     async function checkUser() {
       try {
-        const { data, error } = await supabase.auth.getUser();
+        const { data, error } = await getsupabase.auth.getUser();
 
         if (error || !data?.user) {
           router.replace("/login");
@@ -459,7 +459,7 @@ export default function DashboardPage() {
 
   async function handleLogout() {
     try {
-      await supabase.auth.signOut();
+      await getsupabase.auth.signOut();
     } catch (e) {
       console.error(e);
     } finally {

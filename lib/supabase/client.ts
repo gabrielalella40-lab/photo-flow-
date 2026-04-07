@@ -23,9 +23,9 @@ function createBrowserSupabaseClient(): SupabaseClient {
   });
 }
 
-export function getSupabaseClient(): SupabaseClient {
+export function getSupabaseClient(): SupabaseClient | null {
   if (typeof window === "undefined") {
-    throw new Error("Supabase client só pode ser usado no navegador.");
+    return null;
   }
 
   if (!browserClient) {
@@ -38,6 +38,12 @@ export function getSupabaseClient(): SupabaseClient {
 export const supabase = new Proxy({} as SupabaseClient, {
   get(_target, prop: keyof SupabaseClient) {
     const client = getSupabaseClient();
+
+    if (!client) {
+      throw new Error(
+        "Supabase client indisponível no servidor. Use apenas no navegador."
+      );
+    }
 
     const value = client[prop];
 

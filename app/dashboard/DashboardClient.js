@@ -33,7 +33,16 @@ import {
 
 export default function DashboardPage() {
   const router = useRouter();
-  const supabase = useMemo(() => getSupabaseClient(), []);
+
+  const getSupabase = useCallback(() => {
+    const client = getSupabaseClient();
+
+    if (!client) {
+      throw new Error("Supabase indisponível no navegador.");
+    }
+
+    return client;
+  }, []);
 
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
@@ -98,6 +107,8 @@ export default function DashboardPage() {
       setProfileLoading(true);
 
       try {
+        const supabase = getSupabase();
+
         const { data: profileData, error: profileError } = await supabase
           .from("profiles")
           .select("credits, plan, email")
@@ -130,13 +141,15 @@ export default function DashboardPage() {
         setProfileLoading(false);
       }
     },
-    [supabase, normalizeProfile]
+    [getSupabase, normalizeProfile]
   );
 
   const loadJobs = useCallback(async () => {
     try {
       setJobsLoading(true);
       setJobsError("");
+
+      const supabase = getSupabase();
 
       const {
         data: { session },
@@ -187,7 +200,7 @@ export default function DashboardPage() {
     } finally {
       setJobsLoading(false);
     }
-  }, [supabase]);
+  }, [getSupabase]);
 
   const refreshDashboardData = useCallback(
     async ({ silent = false } = {}) => {
@@ -216,6 +229,8 @@ export default function DashboardPage() {
 
     async function checkUser() {
       try {
+        const supabase = getSupabase();
+
         const { data: sessionData, error: sessionError } =
           await supabase.auth.getSession();
 
@@ -248,9 +263,11 @@ export default function DashboardPage() {
     return () => {
       cancelled = true;
     };
-  }, [router, supabase, fetchProfile, loadJobs]);
+  }, [router, getSupabase, fetchProfile, loadJobs]);
 
   useEffect(() => {
+    const supabase = getSupabase();
+
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (_event, session) => {
@@ -266,10 +283,12 @@ export default function DashboardPage() {
     return () => {
       subscription.unsubscribe();
     };
-  }, [supabase, fetchProfile]);
+  }, [getSupabase, fetchProfile]);
 
   useEffect(() => {
     if (!user?.id) return;
+
+    const supabase = getSupabase();
 
     const channel = supabase
       .channel(`profile-sync-${user.id}`)
@@ -339,7 +358,7 @@ export default function DashboardPage() {
       setRealtimeConnected(false);
     };
   }, [
-    supabase,
+    getSupabase,
     user,
     profile?.credits,
     profile?.plan,
@@ -503,6 +522,7 @@ export default function DashboardPage() {
 
   async function handleLogout() {
     try {
+      const supabase = getSupabase();
       await supabase.auth.signOut();
     } catch (error) {
       console.error(error);
@@ -639,13 +659,22 @@ export default function DashboardPage() {
 
   const stats = useMemo(() => {
     const totalJobs = jobs.length;
-    const processingJobs = jobs.filter((job) => job.status === "processing").length;
+    const processingJobs = jobs.filter(
+      (job) => job.status === "processing"
+    ).length;
     const completedJobs = jobs.filter(
-      (job) => job.status === "completed" || job.status === "completed_with_errors"
+      (job) =>
+        job.status === "completed" || job.status === "completed_with_errors"
     ).length;
     const failedJobs = jobs.filter((job) => job.status === "failed").length;
-    const totalPhotos = jobs.reduce((acc, job) => acc + Number(job.totalPhotos || 0), 0);
-    const totalDonePhotos = jobs.reduce((acc, job) => acc + Number(job.donePhotos || 0), 0);
+    const totalPhotos = jobs.reduce(
+      (acc, job) => acc + Number(job.totalPhotos || 0),
+      0
+    );
+    const totalDonePhotos = jobs.reduce(
+      (acc, job) => acc + Number(job.donePhotos || 0),
+      0
+    );
 
     return {
       totalJobs,
@@ -661,7 +690,8 @@ export default function DashboardPage() {
     return jobs.filter((job) => {
       const projectName = String(job.projectName || "");
       const matchesSearch =
-        !searchTerm || projectName.toLowerCase().includes(searchTerm.toLowerCase());
+        !searchTerm ||
+        projectName.toLowerCase().includes(searchTerm.toLowerCase());
 
       const matchesStatus =
         statusFilter === "all" ? true : job.status === statusFilter;
@@ -741,9 +771,13 @@ export default function DashboardPage() {
             >
               <RefreshCw
                 size={16}
-                className={manualRefreshing || paymentSyncing ? "animate-spin" : ""}
+                className={
+                  manualRefreshing || paymentSyncing ? "animate-spin" : ""
+                }
               />
-              {manualRefreshing || paymentSyncing ? "Atualizando..." : "Atualizar"}
+              {manualRefreshing || paymentSyncing
+                ? "Atualizando..."
+                : "Atualizar"}
             </button>
 
             <button
@@ -798,9 +832,13 @@ export default function DashboardPage() {
 
                 <div>
                   <div className="text-sm font-semibold uppercase tracking-[0.18em]">
-                    {paymentSyncing ? "Sincronizando pagamento" : "Dashboard atualizada"}
+                    {paymentSyncing
+                      ? "Sincronizando pagamento"
+                      : "Dashboard atualizada"}
                   </div>
-                  <div className="mt-1 text-sm text-white/80">{paymentSyncMessage}</div>
+                  <div className="mt-1 text-sm text-white/80">
+                    {paymentSyncMessage}
+                  </div>
                 </div>
               </div>
 
@@ -836,7 +874,9 @@ export default function DashboardPage() {
             </h1>
 
             <p className="mt-5 max-w-2xl text-lg leading-8 text-white/62">
-              Aqui você acompanha seus lotes, o andamento real do processamento e os resultados prontos para revisão, sem confusão e sem excesso de informação.
+              Aqui você acompanha seus lotes, o andamento real do processamento
+              e os resultados prontos para revisão, sem confusão e sem excesso
+              de informação.
             </p>
 
             <div className="mt-6 rounded-[1.6rem] border border-white/8 bg-[#0d1528] p-5">
@@ -871,7 +911,9 @@ export default function DashboardPage() {
                     }`}
                   >
                     <Wifi size={13} />
-                    {realtimeConnected ? "Tempo real ativo" : "Tempo real aguardando"}
+                    {realtimeConnected
+                      ? "Tempo real ativo"
+                      : "Tempo real aguardando"}
                   </div>
                 </div>
               </div>
@@ -887,7 +929,8 @@ export default function DashboardPage() {
                 </div>
                 <div className="inline-flex items-center gap-2 rounded-full border border-violet-400/25 bg-violet-400/10 px-3 py-1.5 text-xs text-violet-200">
                   <Wallet size={14} />
-                  {credits.toLocaleString("pt-BR")} crédito{credits !== 1 ? "s" : ""}
+                  {credits.toLocaleString("pt-BR")} crédito
+                  {credits !== 1 ? "s" : ""}
                 </div>
                 {syncedLabel && (
                   <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-white/70">
@@ -959,7 +1002,9 @@ export default function DashboardPage() {
                   </div>
 
                   <div className="rounded-2xl border border-cyan-400/20 bg-cyan-400/10 p-4 shadow-[0_0_30px_rgba(34,211,238,0.08)]">
-                    <div className="text-sm text-white/60">Créditos disponíveis</div>
+                    <div className="text-sm text-white/60">
+                      Créditos disponíveis
+                    </div>
                     <div className="mt-2 inline-flex items-center gap-2 text-2xl font-bold text-cyan-200">
                       <Coins size={22} />
                       {credits.toLocaleString("pt-BR")}
@@ -991,7 +1036,11 @@ export default function DashboardPage() {
                     >
                       <RefreshCw
                         size={15}
-                        className={manualRefreshing || paymentSyncing ? "animate-spin" : ""}
+                        className={
+                          manualRefreshing || paymentSyncing
+                            ? "animate-spin"
+                            : ""
+                        }
                       />
                       Atualizar agora
                     </button>
@@ -1108,7 +1157,8 @@ export default function DashboardPage() {
               </div>
 
               <div className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white/65">
-                {filteredJobs.length} resultado{filteredJobs.length !== 1 ? "s" : ""}
+                {filteredJobs.length} resultado
+                {filteredJobs.length !== 1 ? "s" : ""}
               </div>
             </div>
 
@@ -1141,7 +1191,9 @@ export default function DashboardPage() {
                   <option value="queued">Na fila</option>
                   <option value="processing">Processando</option>
                   <option value="completed">Concluído</option>
-                  <option value="completed_with_errors">Concluído com erros</option>
+                  <option value="completed_with_errors">
+                    Concluído com erros
+                  </option>
                   <option value="failed">Falhou</option>
                 </select>
               </div>
@@ -1236,7 +1288,9 @@ export default function DashboardPage() {
                       </div>
 
                       <div className="rounded-2xl border border-white/8 bg-[#0b1323] p-3">
-                        <div className="text-xs text-white/40">Finalizado em</div>
+                        <div className="text-xs text-white/40">
+                          Finalizado em
+                        </div>
                         <div className="mt-1 truncate text-sm font-semibold text-white">
                           {job.finishedAt ? formatDate(job.finishedAt) : "-"}
                         </div>
@@ -1279,7 +1333,8 @@ export default function DashboardPage() {
                 O que você precisa fazer agora
               </div>
               <p className="mt-3 leading-7 text-white/58">
-                Tudo importante em um bloco só: subir lote, acompanhar processamento, abrir resultados e ajustar seu plano.
+                Tudo importante em um bloco só: subir lote, acompanhar
+                processamento, abrir resultados e ajustar seu plano.
               </p>
 
               <div className="mt-6 grid gap-3">
@@ -1353,7 +1408,10 @@ export default function DashboardPage() {
                     style={{
                       width: `${
                         jobs.length
-                          ? Math.min(100, Math.max(18, recentJob?.progress || 18))
+                          ? Math.min(
+                              100,
+                              Math.max(18, recentJob?.progress || 18)
+                            )
                           : 18
                       }%`,
                     }}
@@ -1362,7 +1420,9 @@ export default function DashboardPage() {
 
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
                   <div className="rounded-2xl bg-[#0b1323] p-4">
-                    <div className="text-sm text-white/40">Fotos no sistema</div>
+                    <div className="text-sm text-white/40">
+                      Fotos no sistema
+                    </div>
                     <div className="mt-1 text-xl font-semibold text-white">
                       {stats.totalPhotos.toLocaleString("pt-BR")}
                     </div>
@@ -1379,7 +1439,8 @@ export default function DashboardPage() {
                 <div className="mt-3 rounded-2xl bg-[#0b1323] p-4">
                   <div className="text-sm text-white/40">Seu saldo agora</div>
                   <div className="mt-1 text-xl font-semibold text-white">
-                    {credits.toLocaleString("pt-BR")} crédito{credits !== 1 ? "s" : ""}
+                    {credits.toLocaleString("pt-BR")} crédito
+                    {credits !== 1 ? "s" : ""}
                   </div>
                 </div>
               </div>

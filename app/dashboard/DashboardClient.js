@@ -149,12 +149,15 @@ export default function DashboardPage() {
       setJobsLoading(true);
       setJobsError("");
 
-      const supabase = getSupabase();
+const supabase = getSupabase();
 
-      const {
-        data: { session },
-        error: sessionError,
-      } = await supabase.auth.getSession();
+// força atualização da sessão após redirect do Stripe
+await supabase.auth.refreshSession();
+
+const { 
+  data: { session },
+  error: sessionError,
+} = await supabase.auth.getSession();
 
       if (sessionError) {
         throw new Error(sessionError.message || "Erro ao validar sessão.");

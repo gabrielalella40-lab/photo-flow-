@@ -7,20 +7,30 @@ import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
+
+let supabaseAdmin = null;
+let openaiClient = null;
 
 function getOpenAI() {
+  if (openaiClient) return openaiClient;
+
   if (!process.env.OPENAI_API_KEY) {
     throw new Error("OPENAI_API_KEY não encontrada no ambiente.");
   }
 
-  return new OpenAI({
+  openaiClient = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
   });
+
+  return openaiClient;
 }
 
 function getSupabase() {
+  if (supabaseAdmin) return supabaseAdmin;
+
   const url =
-    process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
+    process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
 
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -28,7 +38,8 @@ function getSupabase() {
     throw new Error("Supabase envs não configuradas.");
   }
 
-  return createClient(url, key);
+  supabaseAdmin = createClient(url, key);
+  return supabaseAdmin;
 }
 
 const DATA_DIR = path.join(process.cwd(), "data");
@@ -41,7 +52,7 @@ async function ensureDirs() {
 }
 
 function sanitizeFileName(name) {
-  return name.replace(/[^\w.\-]+/g, "_");
+  return String(name || "arquivo").replace(/[^\w.\-]+/g, "_");
 }
 
 async function getAuthenticatedUser(request) {
@@ -95,7 +106,9 @@ async function saveJob(job) {
     photos: job.photos,
   };
 
-  const { error } = await supabase.from("jobs").upsert(payload);
+  const { error } = await supabase
+    .from("jobs")
+    .upsert(payload, { onConflict: "id" });
 
   if (error) {
     throw new Error(error.message || "Falha ao salvar job no Supabase.");
@@ -170,6 +183,7 @@ async function processJob(jobId) {
     await updateJob(jobId, {
       status: "processing",
       startedAt: new Date().toISOString(),
+      error: null,
     });
 
     for (const photo of job.photos) {
@@ -253,15 +267,12 @@ export async function POST(req) {
   try {
     if (!process.env.OPENAI_API_KEY) {
       return NextResponse.json(
-        { error: "OPENAI_API_KEY não encontrada no .env.local" },
+        { error: "OPENAI_API_KEY não encontrada no ambiente." },
         { status: 500 }
       );
     }
 
-    if (
-      !process.env.NEXT_PUBLIC_SUPABASE_URL &&
-      !process.env.SUPABASE_URL
-    ) {
+    if (!process.env.SUPABASE_URL && !process.env.NEXT_PUBLIC_SUPABASE_URL) {
       return NextResponse.json(
         { error: "URL do Supabase não encontrada no ambiente." },
         { status: 500 }
@@ -302,7 +313,7 @@ export async function POST(req) {
     await ensureDirs();
 
     const formData = await req.formData();
-    const projectName = formData.get("projectName") || "Projeto sem nome";
+    const projectName = String(formData.get("projectName") || "Projeto sem nome");
     const files = formData.getAll("images");
 
     if (!files.length) {
@@ -312,7 +323,16 @@ export async function POST(req) {
       );
     }
 
-    const totalPhotos = files.length;
+    const validFiles = files.filter((file) => file instanceof File);
+
+    if (!validFiles.length) {
+      return NextResponse.json(
+        { error: "Nenhum arquivo de imagem válido foi enviado." },
+        { status: 400 }
+      );
+    }
+
+    const totalPhotos = validFiles.length;
 
     if (profile.credits <= 0) {
       return NextResponse.json(
@@ -335,10 +355,9 @@ export async function POST(req) {
 
     const photos = [];
 
-    for (const file of files) {
-      if (!(file instanceof File)) continue;
-
+    for (const file of validFiles) {
       const allowed = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+
       if (!allowed.includes(file.type)) {
         return NextResponse.json(
           { error: `Formato não suportado: ${file.name}` },
@@ -404,13 +423,19 @@ export async function POST(req) {
       );
     }
 
-    processJob(jobId);
+    setTimeout(() => {
+      processJob(jobId).catch((error) => {
+        console.error("Erro em processamento assíncrono do job:", error);
+      });
+    }, 0);
 
     return NextResponse.json({
       success: true,
       jobId,
     });
   } catch (error) {
+    console.error("Erro em /api/jobs/start:", error);
+
     return NextResponse.json(
       {
         error: "Falha ao iniciar job em lote.",

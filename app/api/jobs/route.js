@@ -1,25 +1,32 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+let supabaseAdmin = null;
+
 function getSupabase() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (supabaseAdmin) return supabaseAdmin;
+
+  const supabaseUrl =
+    process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   if (!supabaseUrl) {
-    throw new Error("NEXT_PUBLIC_SUPABASE_URL não configurada.");
+    throw new Error("SUPABASE_URL ou NEXT_PUBLIC_SUPABASE_URL não configurada.");
   }
 
   if (!supabaseServiceRoleKey) {
     throw new Error("SUPABASE_SERVICE_ROLE_KEY não configurada.");
   }
 
-  return createClient(supabaseUrl, supabaseServiceRoleKey);
+  supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey);
+  return supabaseAdmin;
 }
 
-async function getAuthenticatedUser(request) {
+async function getAuthenticatedUser(request, supabase) {
   try {
-    const supabase = getSupabase();
-
     const authHeader = request.headers.get("authorization");
 
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
@@ -50,15 +57,37 @@ async function getAuthenticatedUser(request) {
   }
 }
 
+function normalizeJob(job) {
+  const photos = Array.isArray(job?.photos) ? job.photos : [];
+
+  return {
+    id: job?.id ?? null,
+    userId: job?.user_id ?? null,
+    projectName: job?.project_name || "Projeto sem nome",
+    status: job?.status || "unknown",
+    progress: Number(job?.progress ?? 0),
+    createdAt: job?.created_at || null,
+    startedAt: job?.started_at || null,
+    finishedAt: job?.finished_at || null,
+    totalPhotos: photos.length,
+    donePhotos: photos.filter((photo) => photo?.status === "done").length,
+    errorPhotos: photos.filter((photo) => photo?.status === "error").length,
+  };
+}
+
 export async function GET(request) {
   try {
     const supabase = getSupabase();
 
-    const { user, error: authError } = await getAuthenticatedUser(request);
+    const { user, error: authError } = await getAuthenticatedUser(
+      request,
+      supabase
+    );
 
     if (authError || !user) {
       return NextResponse.json(
         {
+          success: false,
           error: authError || "Não autorizado.",
         },
         { status: 401 }
@@ -74,6 +103,7 @@ export async function GET(request) {
     if (error) {
       return NextResponse.json(
         {
+          success: false,
           error: "Falha ao listar jobs.",
           details: error.message,
         },
@@ -81,31 +111,21 @@ export async function GET(request) {
       );
     }
 
-    const jobs = (data || []).map((job) => ({
-      id: job.id,
-      userId: job.user_id || null,
-      projectName: job.project_name || "Projeto sem nome",
-      status: job.status || "unknown",
-      progress: job.progress || 0,
-      createdAt: job.created_at || null,
-      startedAt: job.started_at || null,
-      finishedAt: job.finished_at || null,
-      totalPhotos: Array.isArray(job.photos) ? job.photos.length : 0,
-      donePhotos: Array.isArray(job.photos)
-        ? job.photos.filter((photo) => photo.status === "done").length
-        : 0,
-      errorPhotos: Array.isArray(job.photos)
-        ? job.photos.filter((photo) => photo.status === "error").length
-        : 0,
-    }));
+    const jobs = (data || []).map(normalizeJob);
 
-    return NextResponse.json({
-      success: true,
-      jobs,
-    });
-  } catch (error) {
     return NextResponse.json(
       {
+        success: true,
+        jobs,
+      },
+      { status: 200 }
+    );
+  } catch (error) {
+    console.error("ERRO EM /api/jobs:", error);
+
+    return NextResponse.json(
+      {
+        success: false,
         error: "Falha ao listar jobs.",
         details: error?.message || "Erro desconhecido",
       },
